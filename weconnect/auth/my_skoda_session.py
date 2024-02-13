@@ -46,6 +46,7 @@ class MySkodaSession(VWWebSession):
         self._session_tokens = {}
 
     def login(self, client='technical'):
+        LOG.info('starting login with skoda session')
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'

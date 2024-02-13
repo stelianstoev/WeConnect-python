@@ -112,6 +112,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
 
         if loginOnInit:
             self.__session.login()
+            LOG.info('end of login() with skoda connect')
 
         if updateAfterLogin:
             self.update(updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective)

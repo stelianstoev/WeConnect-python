@@ -104,6 +104,7 @@ class MySkodaSession(VWWebSession):
             'accept-encoding': 'gzip, deflate, br'
         })
         while True:
+            LOG.info('starting with loginFormResponse')
             loginFormResponse: requests.Response = websession.get(authorizationUrl, allow_redirects=False)
             if loginFormResponse.status_code == requests.codes['ok']:
                 break
@@ -138,6 +139,7 @@ class MySkodaSession(VWWebSession):
 
         # Set email to the provided username
         formData['email'] = self.sessionuser.username
+        LOG.info('username in skoda_session is: %s', self.sessionuser.username)
 
         # build url from form action
         login2Url: str = 'https://identity.vwgroup.io' + target
@@ -146,6 +148,7 @@ class MySkodaSession(VWWebSession):
         loginHeadersForm['Content-Type'] = 'application/x-www-form-urlencoded'
 
         # Post form content and retrieve credentials page
+        LOG.info('staring with authentication 2URL')
         login2Response: requests.Response = websession.post(login2Url, headers=loginHeadersForm, data=formData, allow_redirects=True)
 
         if login2Response.status_code != requests.codes['ok']:  # pylint: disable=E1101

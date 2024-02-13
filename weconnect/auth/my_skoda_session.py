@@ -51,12 +51,15 @@ class MySkodaSession(VWWebSession):
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
         authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')
+        LOG.info('starting webAuth with skoda connect')
         response = self.doWebAuth(authorizationUrl)
+        LOG.info('starting fetchTokens from skoda connect')
         token_data = self.fetchTokens('https://api.connect.skoda-auto.cz/api/v1/authentication/token?systemId=' + client,
                          authorization_response=response
                          )
         
         self._session_tokens[client] = {}
+        LOG.info('%s: token is fetched', client)
 
         # Assume that tokens were received OK
         if not 'error' in token_data:

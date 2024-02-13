@@ -25,9 +25,9 @@ class BatteryStatus(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update battery status from dict')
 
-        if 'value' in fromDict:
-            if 'cruisingRangeElectric_km' in fromDict['value']:
-                cruisingRangeElectric_km = int(fromDict['value']['cruisingRangeElectric_km'])
+        if 'batteryStatus' in fromDict:
+            if 'cruisingRangeElectric_km' in fromDict['batteryStatus']:
+                cruisingRangeElectric_km = int(fromDict['batteryStatus']['cruisingRangeElectric_km']/1000)
                 if self.fixAPI and cruisingRangeElectric_km == 0x3FFF:
                     cruisingRangeElectric_km = None
                     LOG.info('%s: Attribute cruisingRangeElectric_km was error value 0x3FFF. Setting error state instead'
@@ -35,7 +35,7 @@ class BatteryStatus(GenericStatus):
 
                 if (self.fixAPI
                     and round((self.cruisingRangeElectric_km.value or 0) * 0.621371) == cruisingRangeElectric_km and cruisingRangeElectric_km != 0
-                        and self.currentSOC_pct.value == int(fromDict['value']['currentSOC_pct'])):
+                        and self.currentSOC_pct.value == int(fromDict['batteryStatus']['currentSOC_pct'])):
                     LOG.info('%s: Attribute cruisingRangeElectric_km was miscalculated (miles/km) this is a bug in the API and the new value will not be used',
                              self.getGlobalAddress())
                 else:
@@ -44,7 +44,7 @@ class BatteryStatus(GenericStatus):
             else:
                 self.cruisingRangeElectric_km.enabled = False
 
-            self.currentSOC_pct.fromDict(fromDict['value'], 'currentSOC_pct')
+            self.currentSOC_pct.fromDict(fromDict['batteryStatus'], 'currentSOC_pct')
         else:
             self.currentSOC_pct.enabled = False
             self.cruisingRangeElectric_km.enabled = False
@@ -54,11 +54,11 @@ class BatteryStatus(GenericStatus):
 
     def __str__(self):
         string = super().__str__()
-        if self.currentSOC_pct.enabled:
-            string += f'\n\tCurrent SoC: {self.currentSOC_pct.value}%'
-        if self.cruisingRangeElectric_km.enabled:
-            if self.cruisingRangeElectric_km.value is not None:
-                string += f'\n\tRange: {self.cruisingRangeElectric_km.value}km'
+        if self.currentSOC_pct:
+            string += f'\n\tCurrent SoC: {self.currentSOC_pct}%'
+        if self.cruisingRangeElectric_km:
+            if self.cruisingRangeElectric_km is not None:
+                string += f'\n\tRange: {self.cruisingRangeElectric_km}km'
             else:
                 string += '\n\tRange: currently unknown'
         return string

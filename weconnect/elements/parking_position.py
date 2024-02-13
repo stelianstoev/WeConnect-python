@@ -28,9 +28,11 @@ class ParkingPosition(GenericStatus):
             fromDict['value'] = fromDict['data']
             del fromDict['data']
 
-        if 'value' in fromDict:
-            self.latitude.fromDict(fromDict['value'], 'lat')
-            self.longitude.fromDict(fromDict['value'], 'lon')
+        if 'latitude' in fromDict:
+            self.latitude = fromDict['latitude']
+            self.longitude = fromDict['longitude']
+            fromDict.update({'value':{'carCapturedTimestamp': fromDict['lastUpdatedAt']}})
+            del fromDict['lastUpdatedAt']
         else:
             self.latitude.enabled = False
             self.longitude.enabled = False
@@ -40,8 +42,8 @@ class ParkingPosition(GenericStatus):
 
     def __str__(self):
         string = super().__str__()
-        if self.latitude.enabled:
-            string += f'\n\tLatitude: {self.latitude.value}'
-        if self.longitude.enabled:
-            string += f'\n\tLongitude: {self.longitude.value}'
+        if self.latitude:
+            string += f'\n\tLatitude: {self.latitude}'
+        if self.longitude:
+            string += f'\n\tLongitude: {self.longitude}'
         return string

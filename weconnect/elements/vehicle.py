@@ -166,7 +166,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             self.brandCode.fromDict(fromDict, 'brandCode')
 
             if updateCapabilities and 'capabilities' in fromDict and fromDict['capabilities'] is not None:
-                for capDict in fromDict['capabilities']:
+                for capDict in fromDict['capabilities']['capabilities']:
                     if 'id' in capDict:
                         if capDict['id'] in self.capabilities:
                             self.capabilities[capDict['id']].update(fromDict=capDict)
@@ -176,7 +176,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                                 fixAPI=self.fixAPI)
                 for capabilityId in [capabilityId for capabilityId in self.capabilities.keys()
                                      if capabilityId not in [capability['id']
-                                     for capability in fromDict['capabilities'] if 'id' in capability]]:
+                                     for capability in fromDict['capabilities']['capabilities'] if 'id' in capability]]:
                     del self.capabilities[capabilityId]
             else:
                 self.capabilities.clear()
@@ -334,41 +334,10 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         else:
             jobs = [domain.value for domain in selective]
         with self.lock:
-            url: str = 'https://emea.bff.cariad.digital/vehicle/v1/vehicles/' + self.vin.value + '/selectivestatus?jobs=' + ','.join(jobs)
-            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
-            if len(data) == 0:
-                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
-            if data is not None:
-                for domain, keyClassMap in jobKeyClassMap.items():
-                    if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
-                        continue
-                    if domain.value in data:
-                        if domain.value not in self.domains:
-                            self.domains[domain.value] = DomainDict(localAddress=domain.value, parent=self.domains)
-                        for key, className in keyClassMap.items():
-                            if key in data[domain.value]:
-                                if key in self.domains[domain.value]:
-                                    LOG.debug('Status %s exists, updating it', key)
-                                    self.domains[domain.value][key].update(fromDict=data[domain.value][key])
-                                else:
-                                    LOG.debug('Status %s does not exist, creating it', key)
-                                    self.domains[domain.value][key] = className(vehicle=self, parent=self.domains[domain.value], statusId=key,
-                                                                                fromDict=data[domain.value][key], fixAPI=self.fixAPI)
-                        if 'error' in data[domain.value]:
-                            self.domains[domain.value].updateError(data[domain.value])
-
-                        # check that there is no additional status than the configured ones, except for "target" that we merge into
-                        # the known ones
-                        for key, value in {key: value for key, value in data[domain.value].items()
-                                           if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
-                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
-                # check that there is no additional domain than the configured ones
-                for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
-                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
-
+            url: str = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
             if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.PARKING])) \
-                    and (not updateCapabilities or ('parkingPosition' in self.capabilities and self.capabilities['parkingPosition'].status.value is None)):
-                url = 'https://emea.bff.cariad.digital/vehicle/v1/vehicles/' + self.vin.value + '/parkingposition'
+                    and (not updateCapabilities or ('PARKING_POSITION' in self.capabilities and self.capabilities['PARKING_POSITION'].status.value is None)):
+                url = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
                 data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
                                                                                                                  codes['no_content'],
                                                                                                                  codes['bad_gateway'],
@@ -392,28 +361,115 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         parkingPosition.carCapturedTimestamp.enabled = False
                         parkingPosition.enabled = False
 
-            if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.TRIPS])):
-                try:
-                    for tripType in [tripType for tripType in Trip.TripType if tripType != Trip.TripType.UNKNOWN]:
-                        url = 'https://emea.bff.cariad.digital/vehicle/v1/trips/' + self.vin.value + '/' + tripType.value.lower() + '/last'
+            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
+            self.weConnect.session.setToken(client='connect')
+            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
+            if len(data) == 0:
+                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
+            if data is not None:
+                data['measurements'] = data['remote']
+                data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
+                del data['measurements']['mileageInKm']
+                del data['remote']
+                for domain, keyClassMap in jobKeyClassMap.items():
+                    if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
+                        continue
+                    if domain.value in data:
+                        if domain.value not in self.domains:
+                            self.domains[domain.value] = DomainDict(localAddress=domain.value, parent=self.domains)
+                        for key, className in keyClassMap.items():
+                            if key in data[domain.value]:
+                                if key in self.domains[domain.value]:
+                                    LOG.debug('Status %s exists, updating it', key)
+                                    self.domains[domain.value][key].update(fromDict=data[domain.value][key])
+                                else:
+                                    LOG.debug('Status %s does not exist, creating it', key)
+                                    self.domains[domain.value][key] = className(vehicle=self, parent=self.domains[domain.value], statusId=key,
+                                                                                fromDict=data[domain.value], fixAPI=self.fixAPI)
+                        if 'error' in data[domain.value]:
+                            self.domains[domain.value].updateError(data[domain.value])
 
-                        data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
-                                                                                                                         codes['no_content'],
-                                                                                                                         codes['bad_gateway'],
-                                                                                                                         codes['forbidden']])
-                        if data is not None and 'data' in data:
-                            if tripType.value in self.trips:
-                                self.trips[tripType.value].update(fromDict=data['data'])
-                            else:
-                                self.trips[tripType.value] = Trip(vehicle=self,
-                                                                  parent=self.trips,
-                                                                  tripType=tripType.value,
-                                                                  fromDict=data['data'])
-                        else:
-                            if tripType.value in self.trips:
-                                self.trips[tripType.value].enabled = False
-                except TooManyRequestsError:
-                    LOG.warning('Trips could not be fetched for car %s due to too many requests.', self.vin.value)
+                        # check that there is no additional status than the configured ones, except for "target" that we merge into
+                        # the known ones
+                        for key, value in {key: value for key, value in data[domain.value].items()
+                                           if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
+                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
+                # check that there is no additional domain than the configured ones
+                for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
+                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
+
+            url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
+            self.weConnect.session.setToken(client='connect')
+            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
+            if len(data) == 0:
+                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
+            if data is not None:
+                data['charging']['plugStatus'] = data['plug']
+                data['charging']['plugStatus']['plugConnectionState'] = data['charging']['plugStatus']['connectionState']
+                data['charging']['plugStatus']['plugLockState'] = data['charging']['plugStatus']['lockState']
+
+                data['charging']['batteryStatus'] = data['battery']
+                data['charging']['batteryStatus']['currentSOC_pct'] = data['charging']['batteryStatus']['stateOfChargeInPercent']
+                data['charging']['batteryStatus']['cruisingRangeElectric_km'] = data['charging']['batteryStatus']['cruisingRangeElectricInMeters']
+
+                data['charging']['chargingStatus'] = data['charging']
+                data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = data['charging']['chargingStatus']['remainingToCompleteInSeconds']
+                data['charging']['chargingStatus']['chargingState'] = data['charging']['chargingStatus']['state']
+                data['charging']['chargingStatus']['chargePower_kW'] = data['charging']['chargingStatus']['chargingPowerInWatts']
+                data['charging']['chargingStatus']['chargeRate_kmph'] = data['charging']['chargingStatus']['chargingRateInKilometersPerHour']             
+                data['charging']['chargingStatus']['chargeType'] = data['charging']['chargingStatus']['chargingType']
+
+                del data['plug']
+                for domain, keyClassMap in jobKeyClassMap.items():
+                    if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
+                        continue
+                    if domain.value in data:
+                        if domain.value not in self.domains:
+                            self.domains[domain.value] = DomainDict(localAddress=domain.value, parent=self.domains)
+                        for key, className in keyClassMap.items():
+                            if key in data[domain.value]:
+                                if key in self.domains[domain.value]:
+                                    LOG.debug('Status %s exists, updating it', key)
+                                    self.domains[domain.value][key].update(fromDict=data[domain.value][key])
+                                else:
+                                    LOG.debug('Status %s does not exist, creating it', key)
+                                    self.domains[domain.value][key] = className(vehicle=self, parent=self.domains[domain.value], statusId=key,
+                                                                                fromDict=data[domain.value], fixAPI=self.fixAPI)
+                        if 'error' in data[domain.value]:
+                            self.domains[domain.value].updateError(data[domain.value])
+
+                        # check that there is no additional status than the configured ones, except for "target" that we merge into
+                        # the known ones
+                        for key, value in {key: value for key, value in data[domain.value].items()
+                                           if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
+                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
+                # check that there is no additional domain than the configured ones
+                for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
+                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
+
+
+            # if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.TRIPS])):
+            #     try:
+            #         for tripType in [tripType for tripType in Trip.TripType if tripType != Trip.TripType.UNKNOWN]:
+            #             url = 'https://emea.bff.cariad.digital/vehicle/v1/trips/' + self.vin.value + '/' + tripType.value.lower() + '/last'
+
+            #             data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
+            #                                                                                                              codes['no_content'],
+            #                                                                                                              codes['bad_gateway'],
+            #                                                                                                              codes['forbidden']])
+            #             if data is not None and 'data' in data:
+            #                 if tripType.value in self.trips:
+            #                     self.trips[tripType.value].update(fromDict=data['data'])
+            #                 else:
+            #                     self.trips[tripType.value] = Trip(vehicle=self,
+            #                                                       parent=self.trips,
+            #                                                       tripType=tripType.value,
+            #                                                       fromDict=data['data'])
+            #             else:
+            #                 if tripType.value in self.trips:
+            #                     self.trips[tripType.value].enabled = False
+            #     except TooManyRequestsError:
+            #         LOG.warning('Trips could not be fetched for car %s due to too many requests.', self.vin.value)
         # Controls
         self.controls.update()
 

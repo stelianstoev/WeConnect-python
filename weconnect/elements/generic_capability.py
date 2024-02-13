@@ -20,7 +20,7 @@ class GenericCapability(AddressableObject):
         self.id = AddressableAttribute(localAddress='id', parent=self, value=None, valueType=str)
         self.status = AddressableAttribute(localAddress='status', parent=self, value=None, valueType=list)
         self.expirationDate = AddressableAttribute(
-            localAddress='expirationDate', parent=self, value=None, valueType=datetime)
+            localAddress='serviceExpiration', parent=self, value=None, valueType=datetime)
         self.userDisablingAllowed = AddressableAttribute(
             localAddress='userDisablingAllowed', parent=self, value=None, valueType=bool)
         LOG.debug('Create capability from dict')
@@ -44,11 +44,11 @@ class GenericCapability(AddressableObject):
         else:
             self.status.enabled = False
 
-        self.expirationDate.fromDict(fromDict, 'expirationDate')
+        self.expirationDate.fromDict(fromDict, 'serviceExpiration')
         self.userDisablingAllowed.fromDict(fromDict, 'userDisablingAllowed')
 
         for key, value in {key: value for key, value in fromDict.items()
-                           if key not in ['id', 'status', 'expirationDate', 'userDisablingAllowed']}.items():
+                           if key not in ['id', 'statuses', 'serviceExpiration', 'userDisablingAllowed']}.items():
             LOG.warning('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
     def __str__(self):

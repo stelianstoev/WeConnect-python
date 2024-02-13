@@ -26,10 +26,10 @@ class ChargeMode(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update ChargeMode status from dict')
 
-        if 'value' in fromDict:
-            self.preferredChargeMode.fromDict(fromDict['value'], 'preferredChargeMode')
+        if 'chargeMode' in fromDict:
+            self.preferredChargeMode = fromDict['chargeMode']
 
-            if 'availableChargeModes' in fromDict['value']:
+            if 'availableChargeModes' in fromDict:
                 if self.availableChargeModes is None:
                     self.availableChargeModes = ChargeMode.ChargeModeList(localAddress='availableChargeModes', parent=self,
                                                                           fromDict=fromDict['value']['availableChargeModes'])
@@ -48,9 +48,9 @@ class ChargeMode(GenericStatus):
 
     def __str__(self):
         string = super().__str__()
-        if self.preferredChargeMode is not None and self.preferredChargeMode.enabled:
-            string += f'\n\tPreferred charge mode: {self.preferredChargeMode.value.value}'  # pylint: disable=no-member
-        if self.availableChargeModes is not None and self.availableChargeModes.enabled:
+        if self.preferredChargeMode is not None and self.preferredChargeMode:
+            string += f'\n\tPreferred charge mode: {self.preferredChargeMode}'  # pylint: disable=no-member
+        if self.availableChargeModes is not None and self.availableChargeModes:
             string += f'\n\tAvailable charge modes: {self.availableChargeModes}'
         return string
 

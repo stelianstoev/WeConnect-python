@@ -34,13 +34,13 @@ class ChargingStatus(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update Charging status from dict')
 
-        if 'value' in fromDict:
-            self.remainingChargingTimeToComplete_min.fromDict(fromDict['value'], 'remainingChargingTimeToComplete_min')
-            self.chargingState.fromDict(fromDict['value'], 'chargingState')
-            self.chargeMode.fromDict(fromDict['value'], 'chargeMode')
-            self.chargePower_kW.fromDict(fromDict['value'], 'chargePower_kW')
-            if 'chargePower_kW' in fromDict['value']:
-                chargePower_kW = float(fromDict['value']['chargePower_kW'])
+        if 'chargingStatus' in fromDict:
+            self.remainingChargingTimeToComplete_min = int(fromDict['chargingStatus']['remainingChargingTimeToComplete_min']*60)
+            self.chargingState.fromDict(fromDict['chargingStatus'], 'chargingState')
+            self.chargeMode.fromDict(fromDict['chargingStatus'], 'chargeMode')
+            self.chargePower_kW.fromDict(fromDict['chargingStatus'], 'chargePower_kW')
+            if 'chargePower_kW' in fromDict['chargingStatus']:
+                chargePower_kW = float(fromDict['chargingStatus']['chargePower_kW']*1000)
                 if self.fixAPI and chargePower_kW != 0 \
                         and self.chargingState.value in [ChargingStatus.ChargingState.OFF,
                                                          ChargingStatus.ChargingState.READY_FOR_CHARGING,
@@ -49,12 +49,12 @@ class ChargingStatus(GenericStatus):
                                                          ChargingStatus.ChargingState.ERROR]:
                     chargePower_kW = 0.0
                     LOG.debug('%s: Attribute chargePower_kW is %s while chargingState is %s. Setting 0 instead',
-                              self.getGlobalAddress(), fromDict['value']['chargePower_kW'], self.chargingState.value)
+                              self.getGlobalAddress(), fromDict['chargingStatus']['chargePower_kW'], self.chargingState.value)
                 self.chargePower_kW.setValueWithCarTime(chargePower_kW, lastUpdateFromCar=None, fromServer=True)
             else:
                 self.chargePower_kW.enabled = False
-            if 'chargeRate_kmph' in fromDict['value']:
-                chargeRate_kmph = float(fromDict['value']['chargeRate_kmph'])
+            if 'chargeRate_kmph' in fromDict['chargingStatus']:
+                chargeRate_kmph = float(fromDict['chargingStatus']['chargeRate_kmph'])
                 if self.fixAPI and chargeRate_kmph != 0 \
                         and self.chargingState.value in [ChargingStatus.ChargingState.OFF,
                                                          ChargingStatus.ChargingState.READY_FOR_CHARGING,
@@ -63,12 +63,12 @@ class ChargingStatus(GenericStatus):
                                                          ChargingStatus.ChargingState.ERROR]:
                     chargeRate_kmph = 0.0
                     LOG.debug('%s: Attribute chargeRate_kmph is %s while chargingState is %s. Setting 0 instead',
-                              self.getGlobalAddress(), fromDict['value']['chargeRate_kmph'], self.chargingState.value)
+                              self.getGlobalAddress(), fromDict['chargingStatus']['chargeRate_kmph'], self.chargingState.value)
                 self.chargeRate_kmph.setValueWithCarTime(chargeRate_kmph, lastUpdateFromCar=None, fromServer=True)
             else:
                 self.chargeRate_kmph.enabled = False
-            self.chargeType.fromDict(fromDict['value'], 'chargeType')
-            self.chargingSettings.fromDict(fromDict['value'], 'chargingSettings')
+            self.chargeType.fromDict(fromDict['chargingStatus'], 'chargeType')
+            self.chargingSettings.fromDict(fromDict['chargingStatus'], 'chargingSettings')
         else:
             self.remainingChargingTimeToComplete_min.enabled = False
             self.chargingState.enabled = False
@@ -95,46 +95,46 @@ class ChargingStatus(GenericStatus):
             string += f'\n\tState: {self.chargingState.value.value}'  # pylint: disable=no-member
         if self.chargeMode.enabled:
             string += f'\n\tMode: {self.chargeMode.value.value}'  # pylint: disable=no-member
-        if self.remainingChargingTimeToComplete_min.enabled:
-            string += f'\n\tRemaining Charging Time: {self.remainingChargingTimeToComplete_min.value} minutes'
+        if self.remainingChargingTimeToComplete_min:
+            string += f'\n\tRemaining Charging Time: {self.remainingChargingTimeToComplete_min} minutes'
         if self.chargePower_kW.enabled:
-            string += f'\n\tCharge Power: {self.chargePower_kW.value} kW'
+            string += f'\n\tCharge Power: {self.chargePower_kW} kW'
         if self.chargeRate_kmph.enabled:
-            string += f'\n\tCharge Rate: {self.chargeRate_kmph.value} km/h'
+            string += f'\n\tCharge Rate: {self.chargeRate_kmph} km/h'
         if self.chargeType.enabled:
-            string += f'\n\tCharge Type: {self.chargeType.value.value}'
+            string += f'\n\tCharge Type: {self.chargeType.value}'
         if self.chargingSettings.enabled:
-            string += f'\n\tCharging Settings: {self.chargingSettings.value}'
+            string += f'\n\tCharging Settings: {self.chargingSettings}'
         return string
 
     class ChargingState(Enum,):
         OFF = 'off'
-        READY_FOR_CHARGING = 'readyForCharging'
-        NOT_READY_FOR_CHARGING = 'notReadyForCharging'
-        CONSERVATION = 'conservation'
-        CHARGE_PURPOSE_REACHED_NOT_CONSERVATION_CHARGING = 'chargePurposeReachedAndNotConservationCharging'
-        CHARGE_PURPOSE_REACHED_CONSERVATION = 'chargePurposeReachedAndConservation'
-        CHARGING = 'charging'
-        ERROR = 'error'
-        UNSUPPORTED = 'unsupported'
-        DISCHARGING = 'discharging'
-        UNKNOWN = 'unknown charging state'
+        READY_FOR_CHARGING = 'ReadyForCharging'
+        NOT_READY_FOR_CHARGING = 'NotReadyForCharging'
+        CONSERVATION = 'Conservation'
+        CHARGE_PURPOSE_REACHED_NOT_CONSERVATION_CHARGING = 'ChargePurposeReachedAndNotConservationCharging'
+        CHARGE_PURPOSE_REACHED_CONSERVATION = 'ChargePurposeReachedAndConservation'
+        CHARGING = 'Charging'
+        ERROR = 'Error'
+        UNSUPPORTED = 'Unsupported'
+        DISCHARGING = 'Discharging'
+        UNKNOWN = 'Unknown charging state'
 
     class ChargeMode(Enum,):
-        MANUAL = 'manual'
-        INVALID = 'invalid'
-        OFF = 'off'
-        TIMER = 'timer'
-        ONLY_OWN_CURRENT = 'onlyOwnCurrent'
-        PREFERRED_CHARGING_TIMES = 'preferredChargingTimes'
-        TIMER_CHARGING_WITH_CLIMATISATION = 'timerChargingWithClimatisation'
-        HOME_STORAGE_CHARGING = 'homeStorageCharging'
-        IMMEDIATE_DISCHARGING = 'immediateDischarging'
-        UNKNOWN = 'unknown charge mode'
+        MANUAL = 'MANUAL'
+        INVALID = 'INVALID'
+        OFF = 'OFF'
+        TIMER = 'TIMER'
+        ONLY_OWN_CURRENT = 'OnlyOwnCurrent'
+        PREFERRED_CHARGING_TIMES = 'PreferredChargingTimes'
+        TIMER_CHARGING_WITH_CLIMATISATION = 'TimerChargingWithClimatisation'
+        HOME_STORAGE_CHARGING = 'HomeStorageCharging'
+        IMMEDIATE_DISCHARGING = 'ImmediateDischarging'
+        UNKNOWN = 'Unknown charge mode'
 
     class ChargeType(Enum,):
-        INVALID = 'invalid'
-        OFF = 'off'
-        AC = 'ac'
-        DC = 'dc'
-        UNKNOWN = 'unknown charge type'
+        INVALID = 'Invalid'
+        OFF = 'Iff'
+        AC = 'Ac'
+        DC = 'Dc'
+        UNKNOWN = 'Unknown charge type'

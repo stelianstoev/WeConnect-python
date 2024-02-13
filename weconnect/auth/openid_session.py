@@ -107,12 +107,24 @@ class OpenIDSession(requests.Session):
         if self._token is not None and 'refresh_token' in self._token:
             return self._token.get('refresh_token')
         return None
+    
+    @refreshToken.setter
+    def refreshToken(self, newValue):
+        if self._token is None:
+            self._token = {}
+        self._token['refresh_token'] = newValue
 
     @property
     def idToken(self):
         if self._token is not None and 'id_token' in self._token:
             return self._token.get('id_token')
         return None
+    
+    @idToken.setter
+    def idToken(self, newValue):
+        if self._token is None:
+            self._token = {}
+        self._token['id_token'] = newValue
 
     @property
     def tokenType(self):

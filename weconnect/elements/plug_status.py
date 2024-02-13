@@ -29,11 +29,11 @@ class PlugStatus(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update Plug status from dict')
 
-        if 'value' in fromDict:
-            self.plugConnectionState.fromDict(fromDict['value'], 'plugConnectionState')
-            self.plugLockState.fromDict(fromDict['value'], 'plugLockState')
-            self.externalPower.fromDict(fromDict['value'], 'externalPower')
-            self.ledColor.fromDict(fromDict['value'], 'ledColor')
+        if 'plugStatus' in fromDict:
+            self.plugConnectionState.fromDict(fromDict['plugStatus'], 'plugConnectionState')
+            self.plugLockState.fromDict(fromDict['plugStatus'], 'plugLockState')
+            self.externalPower.fromDict(fromDict['plugStatus'], 'externalPower')
+            self.ledColor.fromDict(fromDict['plugStatus'], 'ledColor')
         else:
             self.plugConnectionState.enabled = False
             self.plugLockState.enabled = False
@@ -47,28 +47,28 @@ class PlugStatus(GenericStatus):
         string = super().__str__()
         string += '\n\tPlug:'
         if self.plugConnectionState.enabled:
-            string += f' {self.plugConnectionState.value.value}, '  # pylint: disable=no-member
+            string += f' {self.plugConnectionState}, '  # pylint: disable=no-member
         if self.plugLockState.enabled:
-            string += f'{self.plugLockState.value.value}'  # pylint: disable=no-member
+            string += f'{self.plugLockState}'  # pylint: disable=no-member
         if self.externalPower.enabled:
-            string += f', External Power: {self.externalPower.value.value}'  # pylint: disable=no-member
+            string += f', External Power: {self.externalPower}'  # pylint: disable=no-member
         if self.ledColor.enabled:
-            string += f', Led color: {self.ledColor.value.value}'  # pylint: disable=no-member
+            string += f', Led color: {self.ledColor}'  # pylint: disable=no-member
         return string
 
     class PlugConnectionState(Enum,):
-        CONNECTED = 'connected'
-        DISCONNECTED = 'disconnected'
-        INVALID = 'invalid'
-        UNSUPPORTED = 'unsupported'
-        UNKNOWN = 'unknown unlock plug state'
+        CONNECTED = 'Connected'
+        DISCONNECTED = 'Disconnected'
+        INVALID = 'Invalid'
+        UNSUPPORTED = 'Unsupported'
+        UNKNOWN = 'Unknown unlock plug state'
 
     class PlugLockState(Enum,):
-        LOCKED = 'locked'
-        UNLOCKED = 'unlocked'
-        INVALID = 'invalid'
-        UNSUPPORTED = 'unsupported'
-        UNKNOWN = 'unknown unlock plug state'
+        LOCKED = 'Locked'
+        UNLOCKED = 'Unlocked'
+        INVALID = 'Invalid'
+        UNSUPPORTED = 'Unsupported'
+        UNKNOWN = 'Unknown unlock plug state'
 
     class ExternalPower(Enum,):
         READY = 'ready'

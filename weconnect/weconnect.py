@@ -104,7 +104,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         self.tokenfile = tokenfile
 
         self.__manager = SessionManager(tokenstorefile=tokenfile)
-        self.__session = self.__manager.getSession(Service.WE_CONNECT, SessionUser(username=username, password=password))
+        self.__session = self.__manager.getSession(Service.MY_SKODA, SessionUser(username=username, password=password))
         self.__session.proxies.update(self.proxystring)
         self.__session.timeout = timeout
         self.__session.retries = numRetries
@@ -201,12 +201,13 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                        selective: Optional[list[Domain]] = None) -> None:
         with self.lock:
             catchedRetrievalError = None
-            url = 'https://emea.bff.cariad.digital/vehicle/v1/vehicles'
+            url = 'https://api.connect.skoda-auto.cz/api/v3/garage'
+            self.session.setToken('technical')
             data = self.fetchData(url, force)
             if data is not None:
-                if 'data' in data and data['data']:
+                if 'vehicles' in data and data['vehicles']:
                     vins: List[str] = []
-                    for vehicleDict in data['data']:
+                    for vehicleDict in data['vehicles']:
                         if 'vin' not in vehicleDict:
                             break
                         vin: str = vehicleDict['vin']

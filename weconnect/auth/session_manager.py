@@ -10,6 +10,7 @@ from requests import Session
 from weconnect.auth.we_connect_session import WeConnectSession
 from weconnect.auth.we_charge_session import WeChargeSession
 from weconnect.auth.my_cupra_session import MyCupraSession
+from weconnect.auth.my_skoda_session import MySkodaSession
 
 LOG = logging.getLogger("weconnect")
 
@@ -27,6 +28,7 @@ class Service(Enum):
     WE_CONNECT = 'WeConnect'
     WE_CHARGE = 'WeCharge'
     MY_CUPRA = 'MyCupra'
+    MY_SKODA = 'MySkoda'
 
     def __str__(self) -> str:
         return self.value
@@ -73,6 +75,8 @@ class SessionManager():
             session = WeChargeSession(sessionuser=sessionuser, token=token, metadata=metadata)
         elif service == Service.MY_CUPRA:
             session = MyCupraSession(sessionuser=sessionuser, token=token, metadata=metadata)
+        elif service == Service.MY_SKODA:
+            session = MySkodaSession(sessionuser=sessionuser, token=token, metadata=metadata)
         self.sessions[(service, sessionuser)] = session
         return session
 

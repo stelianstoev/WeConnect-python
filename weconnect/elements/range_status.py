@@ -27,25 +27,25 @@ class RangeStatus(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update range status from dict')
 
-        if 'value' in fromDict:
-            self.carType.fromDict(fromDict['value'], 'carType')
+        if 'rangeStatus' in fromDict:
+            self.carType.fromDict(fromDict['rangeStatus'], 'carType')
 
-            if 'primaryEngine' in fromDict['value']:
-                self.primaryEngine.update(fromDict['value']['primaryEngine'])
+            if 'primaryEngine' in fromDict['rangeStatus']:
+                self.primaryEngine.update(fromDict['rangeStatus']['primaryEngine'])
             else:
                 self.primaryEngine.enabled = False
 
-            if 'secondaryEngine' in fromDict['value']:
-                self.secondaryEngine.update(fromDict['value']['secondaryEngine'])
+            if 'secondaryEngine' in fromDict['rangeStatus']:
+                self.secondaryEngine.update(fromDict['rangeStatus']['secondaryEngine'])
             else:
                 self.secondaryEngine.enabled = False
 
-            if 'totalRange_km' in fromDict['value'] and self.fixAPI \
-                    and round((self.totalRange_km.value or 0) * 0.621371) == int(fromDict['value']['totalRange_km']) and self.totalRange_km.value != 0:
+            if 'totalRange_km' in fromDict['rangeStatus'] and self.fixAPI \
+                    and round((self.totalRange_km.value or 0) * 0.621371) == int(fromDict['rangeStatus']['totalRange_km']) and self.totalRange_km.value != 0:
                 LOG.info('%s: Attribute totalRange_km was miscalculated (miles/km) this is a bug in the API and the new value will not be used',
                          self.getGlobalAddress())
             else:
-                self.totalRange_km.fromDict(fromDict['value'], 'totalRange_km')
+                self.totalRange_km.fromDict(fromDict['rangeStatus'], 'totalRange_km')
 
         else:
             self.carType.enabled = False

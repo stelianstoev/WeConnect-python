@@ -385,6 +385,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 del data['plug']
 
                 currentStateOfCharge = data['charging']['batteryStatus']['currentSOC_pct']
+                cruisingRangeElectric_km = data['charging']['batteryStatus']['cruisingRangeElectric_km']
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
                         continue
@@ -422,6 +423,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 data['measurements'] = data['remote']
                 data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
                 data['measurements']['fuelLevelStatus'] = {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}
+                data['fuelStatus'] = {"rangeStatus": {"carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": cruisingRangeElectric_km}}
                 del data['measurements']['mileageInKm']
                 del data['remote']
 

@@ -28,12 +28,12 @@ class FuelLevelStatus(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update fuel level status from dict')
 
-        if 'value' in fromDict:
-            self.currentFuelLevel_pct.fromDict(fromDict['value'], 'currentFuelLevel_pct')
-            self.currentSOC_pct.fromDict(fromDict['value'], 'currentSOC_pct')
-            self.primaryEngineType.fromDict(fromDict['value'], 'primaryEngineType')
-            self.secondaryEngineType.fromDict(fromDict['value'], 'secondaryEngineType')
-            self.carType.fromDict(fromDict['value'], 'carType')
+        if 'fuelLevelStatus' in fromDict:
+            self.currentFuelLevel_pct.fromDict(fromDict['fuelLevelStatus'], 'currentFuelLevel_pct')
+            self.currentSOC_pct.fromDict(fromDict['fuelLevelStatus'], 'currentSOC_pct')
+            self.primaryEngineType.fromDict(fromDict['fuelLevelStatus'], 'primaryEngineType')
+            self.secondaryEngineType.fromDict(fromDict['fuelLevelStatus'], 'secondaryEngineType')
+            self.carType.fromDict(fromDict['fuelLevelStatus'], 'carType')
         else:
             self.currentFuelLevel_pct.enabled = False
             self.currentSOC_pct.enabled = False

@@ -361,43 +361,6 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         parkingPosition.carCapturedTimestamp.enabled = False
                         parkingPosition.enabled = False
 
-            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
-            self.weConnect.session.setToken(client='connect')
-            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
-            if len(data) == 0:
-                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
-            if data is not None:
-                data['measurements'] = data['remote']
-                data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
-                del data['measurements']['mileageInKm']
-                del data['remote']
-                for domain, keyClassMap in jobKeyClassMap.items():
-                    if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
-                        continue
-                    if domain.value in data:
-                        if domain.value not in self.domains:
-                            self.domains[domain.value] = DomainDict(localAddress=domain.value, parent=self.domains)
-                        for key, className in keyClassMap.items():
-                            if key in data[domain.value]:
-                                if key in self.domains[domain.value]:
-                                    LOG.debug('Status %s exists, updating it', key)
-                                    self.domains[domain.value][key].update(fromDict=data[domain.value][key])
-                                else:
-                                    LOG.debug('Status %s does not exist, creating it', key)
-                                    self.domains[domain.value][key] = className(vehicle=self, parent=self.domains[domain.value], statusId=key,
-                                                                                fromDict=data[domain.value], fixAPI=self.fixAPI)
-                        if 'error' in data[domain.value]:
-                            self.domains[domain.value].updateError(data[domain.value])
-
-                        # check that there is no additional status than the configured ones, except for "target" that we merge into
-                        # the known ones
-                        for key, value in {key: value for key, value in data[domain.value].items()
-                                           if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
-                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
-                # check that there is no additional domain than the configured ones
-                for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
-                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
-
             url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
             self.weConnect.session.setToken(client='connect')
             data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
@@ -420,6 +383,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 data['charging']['chargingStatus']['chargeType'] = data['charging']['chargingStatus']['chargingType']
 
                 del data['plug']
+
+                currentStateOfCharge = data['charging']['batteryStatus']['currentSOC_pct']
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
                         continue
@@ -447,6 +412,45 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
                     LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
+
+            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
+            self.weConnect.session.setToken(client='connect')
+            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
+            if len(data) == 0:
+                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
+            if data is not None:
+                data['measurements'] = data['remote']
+                data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
+                data['measurements']['fuelLevelStatus'] = {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}
+                del data['measurements']['mileageInKm']
+                del data['remote']
+
+                for domain, keyClassMap in jobKeyClassMap.items():
+                    if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
+                        continue
+                    if domain.value in data:
+                        if domain.value not in self.domains:
+                            self.domains[domain.value] = DomainDict(localAddress=domain.value, parent=self.domains)
+                        for key, className in keyClassMap.items():
+                            if key in data[domain.value]:
+                                if key in self.domains[domain.value]:
+                                    LOG.info('Status %s exists, updating it', key)
+                                    self.domains[domain.value][key].update(fromDict=data[domain.value])
+                                else:
+                                    LOG.debug('Status %s does not exist, creating it', key)
+                                    self.domains[domain.value][key] = className(vehicle=self, parent=self.domains[domain.value], statusId=key,
+                                                                                fromDict=data[domain.value], fixAPI=self.fixAPI)
+                        if 'error' in data[domain.value]:
+                            self.domains[domain.value].updateError(data[domain.value])
+
+                        # check that there is no additional status than the configured ones, except for "target" that we merge into
+                        # the known ones
+                        for key, value in {key: value for key, value in data[domain.value].items()
+                                           if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
+                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
+                # check that there is no additional domain than the configured ones
+                for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
+                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
             # if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.TRIPS])):
             #     try:

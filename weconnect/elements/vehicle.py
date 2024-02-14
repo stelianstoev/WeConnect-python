@@ -422,8 +422,9 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             if data is not None:
                 data['measurements'] = data['remote']
                 data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
+                carCapturedTimestamp = data['measurements']['capturedAt']
                 data['measurements']['fuelLevelStatus'] = {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}
-                data['fuelStatus'] = {"rangeStatus": {"carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": cruisingRangeElectric_km}}
+                data['fuelStatus'] = {"rangeStatus": {"value": {"carCapturedTimestamp": carCapturedTimestamp}, "carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": int(cruisingRangeElectric_km/1000)}}
                 del data['measurements']['mileageInKm']
                 del data['remote']
 

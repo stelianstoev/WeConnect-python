@@ -29,8 +29,9 @@ class ParkingPosition(GenericStatus):
             del fromDict['data']
 
         if 'latitude' in fromDict:
-            self.latitude.value = fromDict['latitude']
-            self.longitude.value = fromDict['longitude']
+            
+            self.latitude.fromDict(fromDict, 'latitude')
+            self.longitude.fromDict(fromDict, 'longitude')
             fromDict.update({'value':{'carCapturedTimestamp': fromDict['lastUpdatedAt']}})
             self.latitude.enabled = True
             self.longitude.enabled = True

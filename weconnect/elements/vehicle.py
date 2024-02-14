@@ -395,7 +395,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                             if key in data[domain.value]:
                                 if key in self.domains[domain.value]:
                                     LOG.debug('Status %s exists, updating it', key)
-                                    self.domains[domain.value][key].update(fromDict=data[domain.value][key])
+                                    self.domains[domain.value][key].update(fromDict=data[domain.value])
                                 else:
                                     LOG.debug('Status %s does not exist, creating it', key)
                                     self.domains[domain.value][key] = className(vehicle=self, parent=self.domains[domain.value], statusId=key,

@@ -28,6 +28,7 @@ class BatteryStatus(GenericStatus):
         if 'batteryStatus' in fromDict:
             if 'cruisingRangeElectric_km' in fromDict['batteryStatus']:
                 cruisingRangeElectric_km = int(fromDict['batteryStatus']['cruisingRangeElectric_km']/1000)
+
                 if self.fixAPI and cruisingRangeElectric_km == 0x3FFF:
                     cruisingRangeElectric_km = None
                     LOG.info('%s: Attribute cruisingRangeElectric_km was error value 0x3FFF. Setting error state instead'
@@ -45,6 +46,8 @@ class BatteryStatus(GenericStatus):
                 self.cruisingRangeElectric_km.enabled = False
 
             self.currentSOC_pct.fromDict(fromDict['batteryStatus'], 'currentSOC_pct')
+            self.currentSOC_pct.enabled= True
+            self.cruisingRangeElectric_km.enabled = True
         else:
             self.currentSOC_pct.enabled = False
             self.cruisingRangeElectric_km.enabled = False
@@ -54,9 +57,9 @@ class BatteryStatus(GenericStatus):
 
     def __str__(self):
         string = super().__str__()
-        if self.currentSOC_pct:
+        if self.currentSOC_pct.enabled:
             string += f'\n\tCurrent SoC: {self.currentSOC_pct}%'
-        if self.cruisingRangeElectric_km:
+        if self.cruisingRangeElectric_km.enabled:
             if self.cruisingRangeElectric_km is not None:
                 string += f'\n\tRange: {self.cruisingRangeElectric_km}km'
             else:

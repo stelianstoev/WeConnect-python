@@ -24,11 +24,33 @@ from weconnect.errors import APICompatibilityError, AuthentificationError, Retri
 
 LOG = logging.getLogger("weconnect")
 
+# Headers used for fetching tokens for different clients
+TOKEN_HEADERS = {
+    'connect': {
+        'Accept': 'application/json',
+        'X-Platform': 'Android',
+        'Accept-Charset': 'UTF-8',
+        'Content-Type': 'application/json',
+        'Connection': 'keep-alive',
+        'Accept-Encoding': 'gzip',
+        'User-Agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
+    },
+    'technical': {
+        'Accept': 'application/json',
+        'X-Platform': 'Android',
+        'Accept-Charset': 'UTF-8',
+        'Content-Type': 'application/json',
+        'Connection': 'keep-alive',
+        'Accept-Encoding': 'gzip',
+        'User-Agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
+    }
+}
+
 
 class MySkodaSession(VWWebSession):
     def __init__(self, sessionuser, **kwargs):
         super(MySkodaSession, self).__init__(client_id='f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com',
-                                             refresh_url='https://identity.vwgroup.io/oidc/v1/token',
+                                             refresh_url='https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=technical',
                                              scope='openid mbb profile',
                                              redirect_uri='skodaconnect://oidc.login/',
                                              state=None,
@@ -50,6 +72,9 @@ class MySkodaSession(VWWebSession):
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
+        elif client == 'techincal':
+            self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
+            self.scope= 'openid mbb profile'
         authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')
         LOG.info('starting webAuth with skoda connect')
         response = self.doWebAuth(authorizationUrl)
@@ -66,6 +91,7 @@ class MySkodaSession(VWWebSession):
             self._session_tokens[client]['access_token'] = token_data.get('access_token', token_data.get('accessToken', ''))
             self._session_tokens[client]['refresh_token'] = token_data.get('refresh_token', token_data.get('refreshToken', ''))
             self._session_tokens[client]['id_token'] = token_data.get('id_token', token_data.get('idToken', ''))
+            self.token['client'] = client
         else:
             error = token_data.get('error', '')
             if 'error_description' in token_data:
@@ -81,12 +107,13 @@ class MySkodaSession(VWWebSession):
 
     def setToken(self, client:str):
         self.token = self._session_tokens[client]
+        self.token['client'] = client
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
     def refresh(self):
         self.refreshTokens(
-            'https://mbboauth-1d.prd.ece.vwg-connect.com/mbbcoauth/mobile/oauth2/v1/token',
+            'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + self.token['client'],
         )
 
     def doWebAuth(self, authorizationUrl):  # noqa: C901
@@ -270,11 +297,11 @@ class MySkodaSession(VWWebSession):
         if all(key in self.token for key in ('state', 'id_token', 'access_token', 'code')):
             body: str = json.dumps(
                 {
-                    'state': self.token['state'],
-                    'id_token': self.token['id_token'],
-                    'redirect_uri': self.redirect_uri,
-                    'region': 'emea',
-                    'access_token': self.token['access_token'],
+                    #'state': self.token['state'],
+                    #'id_token': self.token['id_token'],
+                    #'redirect_uri': self.redirect_uri,
+                    #'region': 'emea',
+                    #'access_token': self.token['access_token'],
                     'authorizationCode': self.token['code'],
                 })
 
@@ -304,7 +331,7 @@ class MySkodaSession(VWWebSession):
             token['refresh_token'] = token.pop('refreshToken')
         fixedTokenresponse = to_unicode(json.dumps(token)).encode("utf-8")
         return super(MySkodaSession, self).parseFromBody(token_response=fixedTokenresponse, state=state)
-
+    
     def refreshTokens(
         self,
         token_url,
@@ -316,46 +343,42 @@ class MySkodaSession(VWWebSession):
         proxies=None,
         **kwargs
     ):
-        LOG.info('Refreshing tokens')
+        LOG.info('Refreshing tokens with url: %s', token_url)
         if not token_url:
             raise ValueError("No token endpoint set for auto_refresh.")
 
         if not is_secure_transport(token_url):
             raise InsecureTransportError()
 
-        refresh_token = refresh_token or self.refreshToken
-
+        client = self.token['client']
         if headers is None:
-            headers = self.headers
-
-        body: Dict[str, str] = {
-            'client_id': self.client_id,
-            'client_secret': 'eb8814e641c81a2640ad62eeccec11c98effc9bccd4269ab7af338b50a94b3a2',
-            'grant_type': 'refresh_token',
-            'refresh_token': self.token['refresh_token']
-        }
-
-        headers['content-type'] = 'application/x-www-form-urlencoded; charset=utf-8'
+            headers = TOKEN_HEADERS.get(client)
+        
+        body: str = json.dumps(
+                {
+                    'refreshToken': self.token['refresh_token'],
+                })
 
         tokenResponse = self.post(
             token_url,
             data=body,
             auth=auth,
             timeout=timeout,
-            headers=headers,
-            verify=verify,
-            withhold_token=False,
-            proxies=proxies,
-            access_type=AccessType.NONE
+            headers=headers
         )
         if tokenResponse.status_code == requests.codes['unauthorized']:
             raise AuthentificationError('Refreshing tokens failed: Server requests new authorization')
         elif tokenResponse.status_code in (requests.codes['internal_server_error'], requests.codes['service_unavailable'], requests.codes['gateway_timeout']):
             raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: {tokenResponse.status_code}')
         elif tokenResponse.status_code == requests.codes['ok']:
-            self.parseFromBody(tokenResponse.text)
+            token_data = self.parseFromBody(tokenResponse.text)
+
+            self._session_tokens[client]['access_token'] = token_data.get('access_token', token_data.get('accessToken', ''))
+            self._session_tokens[client]['refresh_token'] = token_data.get('refresh_token', token_data.get('refreshToken', ''))
+            self._session_tokens[client]['id_token'] = token_data.get('id_token', token_data.get('idToken', ''))
+            self.token['client'] = client
             if "refresh_token" not in self.token:
-                LOG.debug("No new refresh token given. Re-using old.")
+                LOG.info("No new refresh token given. Re-using old.")
                 self.token["refresh_token"] = refresh_token
             return self.token
         else:

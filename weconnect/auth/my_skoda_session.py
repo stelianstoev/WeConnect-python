@@ -111,7 +111,9 @@ class MySkodaSession(VWWebSession):
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
+        self.refresh()
     def refresh(self):
+        LOG.info("Refresh token for client: %s", self.token['client'])
         self.refreshTokens(
             'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + self.token['client'],
         )
@@ -366,11 +368,13 @@ class MySkodaSession(VWWebSession):
             timeout=timeout,
             headers=headers
         )
+        LOG.info("TokenResponse from refresh is %s", tokenResponse.status_code)
         if tokenResponse.status_code == requests.codes['unauthorized']:
             raise AuthentificationError('Refreshing tokens failed: Server requests new authorization')
         elif tokenResponse.status_code in (requests.codes['internal_server_error'], requests.codes['service_unavailable'], requests.codes['gateway_timeout']):
             raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: {tokenResponse.status_code}')
         elif tokenResponse.status_code == requests.codes['ok']:
+            LOG.info("Refresh is successful!")
             token_data = self.parseFromBody(tokenResponse.text)
 
             self._session_tokens[client]['access_token'] = token_data.get('access_token', token_data.get('accessToken', ''))

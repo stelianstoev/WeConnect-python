@@ -111,6 +111,7 @@ class MySkodaSession(VWWebSession):
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
+        self.refresh()
     def refresh(self):
         LOG.info("Refresh token for client: %s", self.token['client'])
         self.refreshTokens(

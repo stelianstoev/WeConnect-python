@@ -3,7 +3,7 @@ from typing import Dict, List, Set, Any, Type, Optional, cast, TYPE_CHECKING
 import os
 from threading import Lock
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import base64
 import io
 import logging
@@ -374,6 +374,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 data['charging']['batteryStatus'] = data['battery']
                 data['charging']['batteryStatus']['currentSOC_pct'] = data['charging']['batteryStatus']['stateOfChargeInPercent']
                 data['charging']['batteryStatus']['cruisingRangeElectric_km'] = data['charging']['batteryStatus']['cruisingRangeElectricInMeters']
+                data['charging']['value'] = {"carCapturedTimestamp": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()}
 
                 data['charging']['chargingStatus'] = data['charging']
                 data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = data['charging']['chargingStatus']['remainingToCompleteInSeconds']
@@ -422,6 +423,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             if data is not None:
                 data['measurements'] = data['remote']
                 data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
+                data['measurements']['value'] = {"carCapturedTimestamp": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()}
                 carCapturedTimestamp = data['measurements']['capturedAt']
                 data['measurements']['fuelLevelStatus'] = {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}
                 data['fuelStatus'] = {"rangeStatus": {"value": {"carCapturedTimestamp": carCapturedTimestamp}, "carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": int(cruisingRangeElectric_km/1000)}}

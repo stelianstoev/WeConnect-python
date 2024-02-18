@@ -35,7 +35,7 @@ class ChargingStatus(GenericStatus):
         LOG.debug('Update Charging status from dict')
 
         if 'chargingStatus' in fromDict:
-            self.remainingChargingTimeToComplete_min = int(fromDict['chargingStatus']['remainingChargingTimeToComplete_min']*60)
+            self.remainingChargingTimeToComplete_min.fromDict(fromDict['chargingStatus'], 'remainingChargingTimeToComplete_min')
             self.chargingState.fromDict(fromDict['chargingStatus'], 'chargingState')
             self.chargeMode.fromDict(fromDict['chargingStatus'], 'chargeMode')
             self.chargePower_kW.fromDict(fromDict['chargingStatus'], 'chargePower_kW')
@@ -95,8 +95,8 @@ class ChargingStatus(GenericStatus):
             string += f'\n\tState: {self.chargingState.value.value}'  # pylint: disable=no-member
         if self.chargeMode.enabled:
             string += f'\n\tMode: {self.chargeMode.value.value}'  # pylint: disable=no-member
-        if self.remainingChargingTimeToComplete_min:
-            string += f'\n\tRemaining Charging Time: {self.remainingChargingTimeToComplete_min} minutes'
+        if self.remainingChargingTimeToComplete_min.enabled:
+            string += f'\n\tRemaining Charging Time: {self.remainingChargingTimeToComplete_min.value} minutes'
         if self.chargePower_kW.enabled:
             string += f'\n\tCharge Power: {self.chargePower_kW} kW'
         if self.chargeRate_kmph.enabled:

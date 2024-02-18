@@ -7,6 +7,10 @@ from datetime import datetime, timedelta, timezone
 import base64
 import io
 import logging
+import hashlib
+import hmac
+from base64 import b64encode
+from urllib.parse import urljoin, parse_qs, urlparse, urlencode
 
 from weconnect.elements.generic_status import GenericStatus
 
@@ -484,12 +488,34 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         # Controls
         self.controls.update()
 
+        
+
     def updatePictures(self) -> None:  # noqa: C901
+        LOG.info("Start updatePictures")
         if not SUPPORT_IMAGES:
             return
         with self.lock:
-            url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
+            MODELVIEWS = 'main'                                     # Related to image size, small
+            MODELAPPID = 'ModcwpMobile'                             # Client ID, other ID might require other key
+            MODELAPIKEY = b'P{+!!H:+I#6)SJS_?[_wh6puD#UH*%l:'       # Key used to sign message
+            MODELAPI = 'ms/GetMODCWPImage'                          # API base path
+            MODELHOST = 'https://iaservices.skoda-auto.com/'        # API host
+
+            # Construct message to be encrypted
+            date = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%mZ')
+            message = MODELAPPID +'\n'+ MODELAPI +'?vin='+ self.vin.value +'&view='+ MODELVIEWS +'&date='+ date
+            # Construct hmac SHA-256 key object and encode the message
+            digest = hmac.new(MODELAPIKEY, msg=message.encode(), digestmod=hashlib.sha256).digest()
+            b64enc = {'sign': b64encode(digest).decode()}
+            sign = urlencode(b64enc)
+            # Construct the URL
+
+            path = MODELAPI +'?vin='+ self.vin.value +'&view='+ MODELVIEWS +'&appId='+ MODELAPPID +'&date='+ date +'&'+ sign
+            url = MODELHOST + path
+
+            #url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
             data = self.weConnect.fetchData(url, allowHttpError=True)
+            LOG.info("Data from picture: %s", data)
             if data is not None and 'data' in data:  # pylint: disable=too-many-nested-blocks
                 for image in data['data']:
                     img = None

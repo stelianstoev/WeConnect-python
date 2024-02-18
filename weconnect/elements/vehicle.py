@@ -361,32 +361,19 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         parkingPosition.carCapturedTimestamp.enabled = False
                         parkingPosition.enabled = False
 
-            url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
+            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
             self.weConnect.session.setToken(client='connect')
             data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
             if len(data) == 0:
                 LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
             if data is not None:
-                data['charging']['plugStatus'] = data['plug']
-                data['charging']['plugStatus']['plugConnectionState'] = data['charging']['plugStatus']['connectionState']
-                data['charging']['plugStatus']['plugLockState'] = data['charging']['plugStatus']['lockState']
+                data['measurements'] = data['remote']
+                data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
+                carCapturedTimestamp = data['measurements']['capturedAt']
+                data['measurements']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
+                del data['measurements']['mileageInKm']
+                del data['remote']
 
-                data['charging']['batteryStatus'] = data['battery']
-                data['charging']['batteryStatus']['currentSOC_pct'] = data['charging']['batteryStatus']['stateOfChargeInPercent']
-                data['charging']['batteryStatus']['cruisingRangeElectric_km'] = data['charging']['batteryStatus']['cruisingRangeElectricInMeters']
-                data['charging']['value'] = {"carCapturedTimestamp": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()}
-
-                data['charging']['chargingStatus'] = data['charging']
-                data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = data['charging']['chargingStatus']['remainingToCompleteInSeconds']
-                data['charging']['chargingStatus']['chargingState'] = data['charging']['chargingStatus']['state']
-                data['charging']['chargingStatus']['chargePower_kW'] = data['charging']['chargingStatus']['chargingPowerInWatts']
-                data['charging']['chargingStatus']['chargeRate_kmph'] = data['charging']['chargingStatus']['chargingRateInKilometersPerHour']             
-                data['charging']['chargingStatus']['chargeType'] = data['charging']['chargingStatus']['chargingType']
-
-                del data['plug']
-
-                currentStateOfCharge = data['charging']['batteryStatus']['currentSOC_pct']
-                cruisingRangeElectric_km = data['charging']['batteryStatus']['cruisingRangeElectric_km']
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
                         continue
@@ -396,7 +383,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         for key, className in keyClassMap.items():
                             if key in data[domain.value]:
                                 if key in self.domains[domain.value]:
-                                    LOG.debug('Status %s exists, updating it', key)
+                                    LOG.info('Status %s exists, updating it', key)
                                     self.domains[domain.value][key].update(fromDict=data[domain.value])
                                 else:
                                     LOG.debug('Status %s does not exist, creating it', key)
@@ -414,21 +401,36 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
                     LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
-
-            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
+            url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
             self.weConnect.session.setToken(client='connect')
             data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
             if len(data) == 0:
                 LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
             if data is not None:
-                data['measurements'] = data['remote']
-                data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
-                data['measurements']['value'] = {"carCapturedTimestamp": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()}
-                carCapturedTimestamp = data['measurements']['capturedAt']
-                data['measurements']['fuelLevelStatus'] = {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}
-                data['fuelStatus'] = {"rangeStatus": {"value": {"carCapturedTimestamp": carCapturedTimestamp}, "carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": int(cruisingRangeElectric_km/1000)}}
-                del data['measurements']['mileageInKm']
-                del data['remote']
+                data['charging']['plugStatus'] = data['plug']
+                data['charging']['plugStatus']['plugConnectionState'] = data['charging']['plugStatus']['connectionState']
+                data['charging']['plugStatus']['plugLockState'] = data['charging']['plugStatus']['lockState']
+
+                data['charging']['batteryStatus'] = data['battery']
+                data['charging']['batteryStatus']['currentSOC_pct'] = data['charging']['batteryStatus']['stateOfChargeInPercent']
+                data['charging']['batteryStatus']['cruisingRangeElectric_km'] = data['charging']['batteryStatus']['cruisingRangeElectricInMeters']
+                data['charging']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
+
+                data['charging']['chargingStatus'] = data['charging']
+                data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = data['charging']['chargingStatus']['remainingToCompleteInSeconds']
+                data['charging']['chargingStatus']['chargingState'] = data['charging']['chargingStatus']['state']
+                data['charging']['chargingStatus']['chargePower_kW'] = data['charging']['chargingStatus']['chargingPowerInWatts']
+                data['charging']['chargingStatus']['chargeRate_kmph'] = data['charging']['chargingStatus']['chargingRateInKilometersPerHour']             
+                data['charging']['chargingStatus']['chargeType'] = data['charging']['chargingStatus']['chargingType']
+
+
+                currentStateOfCharge = data['charging']['batteryStatus']['currentSOC_pct']
+                cruisingRangeElectric_km = data['charging']['batteryStatus']['cruisingRangeElectric_km']
+
+                data['measurements'] = {"fuelLevelStatus" : {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}, "value": {"carCapturedTimestamp": carCapturedTimestamp}}
+                data['fuelStatus'] = {"rangeStatus": {"carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": int(cruisingRangeElectric_km/1000)}, "value": {"carCapturedTimestamp": carCapturedTimestamp}}
+
+                del data['plug']
 
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
@@ -439,7 +441,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         for key, className in keyClassMap.items():
                             if key in data[domain.value]:
                                 if key in self.domains[domain.value]:
-                                    LOG.info('Status %s exists, updating it', key)
+                                    LOG.debug('Status %s exists, updating it', key)
                                     self.domains[domain.value][key].update(fromDict=data[domain.value])
                                 else:
                                     LOG.debug('Status %s does not exist, creating it', key)

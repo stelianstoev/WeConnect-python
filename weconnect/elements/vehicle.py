@@ -377,6 +377,12 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 data['measurements']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
                 del data['measurements']['mileageInKm']
                 del data['remote']
+                del data['measurements']['status']
+                del data['measurements']['doors']
+                del data['measurements']['windows']
+                del data['measurements']['lights']
+                del data['errors']
+                del data['local']
 
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
@@ -435,6 +441,14 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 data['fuelStatus'] = {"rangeStatus": {"carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": int(cruisingRangeElectric_km/1000)}, "value": {"carCapturedTimestamp": carCapturedTimestamp}}
 
                 del data['plug']
+                del data['charging']['state']
+                del data['charging']['remainingToCompleteInSeconds']
+                del data['charging']['chargingPowerInWatts']
+                del data['charging']['chargingRateInKilometersPerHour']
+                del data['charging']['chargingType']
+                del data['charging']['chargeMode']
+                del data['charging']['chargingSettings']
+                del data['charging']['plugStatus']
 
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:

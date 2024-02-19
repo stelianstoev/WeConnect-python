@@ -76,9 +76,9 @@ class MySkodaSession(VWWebSession):
             self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
             self.scope= 'openid mbb profile'
         authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')
-        LOG.info('starting webAuth with skoda connect')
+        LOG.info('starting webAuth')
         response = self.doWebAuth(authorizationUrl)
-        LOG.info('starting fetchTokens from skoda connect')
+        LOG.info('starting fetchTokens with client %s,', client)
         token_data = self.fetchTokens('https://api.connect.skoda-auto.cz/api/v1/authentication/token?systemId=' + client,
                          authorization_response=response
                          )
@@ -132,7 +132,6 @@ class MySkodaSession(VWWebSession):
             'accept-encoding': 'gzip, deflate, br'
         })
         while True:
-            LOG.info('starting with loginFormResponse')
             loginFormResponse: requests.Response = websession.get(authorizationUrl, allow_redirects=False)
             if loginFormResponse.status_code == requests.codes['ok']:
                 break
@@ -167,7 +166,7 @@ class MySkodaSession(VWWebSession):
 
         # Set email to the provided username
         formData['email'] = self.sessionuser.username
-        LOG.info('username in skoda_session is: %s', self.sessionuser.username)
+        LOG.info('username in skoda_session is: %s', formData['email'])
 
         # build url from form action
         login2Url: str = 'https://identity.vwgroup.io' + target
@@ -313,6 +312,7 @@ class MySkodaSession(VWWebSession):
             tokenResponse = self.post(token_url, headers=loginHeadersForm, data=body, allow_redirects=False)
             if tokenResponse.status_code != requests.codes['ok']:
                 print(tokenResponse.text)
+                LOG.info("Token response status from fetch is %s", tokenResponse.status_code)
                 raise TemporaryAuthentificationError(f'Token could not be fetched due to temporary MySkoda failure: {tokenResponse.status_code}')
             
             token = self.parseFromBody(tokenResponse.text)

@@ -512,6 +512,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
             path = MODELAPI +'?vin='+ self.vin.value +'&view='+ MODELVIEWS +'&appId='+ MODELAPPID +'&date='+ date +'&'+ sign
             url = MODELHOST + path
+            LOG.info("Picture url: %s", url)
 
             #url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
             data = self.weConnect.fetchData(url, allowHttpError=True)

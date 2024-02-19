@@ -235,7 +235,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 badgeImg.thumbnail((100, 100))
                 self.__badges[badge] = badgeImg
 
-            self.updatePictures()
+            #self.updatePictures()
 
     def updateStatus(self, updateCapabilities: bool = True, force: bool = False,  # noqa: C901 # pylint: disable=too-many-branches
                      selective: Optional[list[Domain]] = None):

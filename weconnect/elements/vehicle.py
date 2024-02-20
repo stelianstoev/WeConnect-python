@@ -226,7 +226,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                                               'images',
                                               'tags',
                                               'coUsers']}.items():
-                LOG.warning('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
+                LOG.debug('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
         self.updateStatus(updateCapabilities=updateCapabilities, force=force, selective=selective)
         if SUPPORT_IMAGES and updatePictures:

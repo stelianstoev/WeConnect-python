@@ -116,7 +116,7 @@ class GenericStatus(AddressableObject):
 
         for key, value in {key: value for key, value in fromDict.items()
                            if key not in (['value', 'error', 'requests'] + ['carCapturedTimestamp'] + ignoreAttributes)}.items():
-            LOG.warning('%s: Unknown element %s with value %s', self.getGlobalAddress(), key, value)
+            LOG.debug('%s: Unknown element %s with value %s', self.getGlobalAddress(), key, value)
 
     def __str__(self) -> str:
         returnString: str = f'[{self.id}]'

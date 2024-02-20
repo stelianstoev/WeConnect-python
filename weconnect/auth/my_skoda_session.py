@@ -72,7 +72,7 @@ class MySkodaSession(VWWebSession):
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
-        elif client == 'techincal':
+        if client == 'technical':
             self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
             self.scope= 'openid mbb profile'
         authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')

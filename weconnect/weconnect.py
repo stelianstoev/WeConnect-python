@@ -385,7 +385,10 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                                                f'Status Code was: {statusResponse.status_code}')
                 elif statusResponse.status_code == requests.codes['unauthorized']:
                     LOG.info('Server asks for new authorization')
+                    client = self.session.token['client']
                     self.login()
+
+                    self.session.setToken(client)
                     statusResponse = self.session.get(url, allow_redirects=False)
                     self.recordElapsed(statusResponse.elapsed)
 

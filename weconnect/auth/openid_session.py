@@ -209,7 +209,7 @@ class OpenIDSession(requests.Session):
                 LOG.info('Token expired')
                 self.accessToken = None
                 try:
-                    self.refresh()
+                    self.login()
                 except AuthentificationError:
                     self.login()
                 except TokenExpiredError:

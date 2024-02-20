@@ -78,7 +78,10 @@ class MySkodaSession(VWWebSession):
         authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')
         LOG.info('starting webAuth')
         response = self.doWebAuth(authorizationUrl)
-        LOG.info('starting fetchTokens with client %s,', client)
+        LOG.info('starting fetchTokens with client %s', client)
+        LOG.info('Client_id is: %s', self.client_id)
+        LOG.info('Scope is: %s', self.scope)
+
         token_data = self.fetchTokens('https://api.connect.skoda-auto.cz/api/v1/authentication/token?systemId=' + client,
                          authorization_response=response
                          )
@@ -114,7 +117,7 @@ class MySkodaSession(VWWebSession):
     def refresh(self):
         LOG.info("Refresh token for client: %s", self.token['client'])
         self.refreshTokens(
-            'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + self.token['client'],
+            'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + self.token['client']
         )
 
     def doWebAuth(self, authorizationUrl):  # noqa: C901

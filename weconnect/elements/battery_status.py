@@ -58,10 +58,10 @@ class BatteryStatus(GenericStatus):
     def __str__(self):
         string = super().__str__()
         if self.currentSOC_pct.enabled:
-            string += f'\n\tCurrent SoC: {self.currentSOC_pct}%'
+            string += f'\n\tCurrent SoC: {self.currentSOC_pct.value}%'
         if self.cruisingRangeElectric_km.enabled:
             if self.cruisingRangeElectric_km is not None:
-                string += f'\n\tRange: {self.cruisingRangeElectric_km}km'
+                string += f'\n\tRange: {self.cruisingRangeElectric_km.value}km'
             else:
                 string += '\n\tRange: currently unknown'
         return string

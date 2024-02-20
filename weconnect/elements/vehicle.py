@@ -342,6 +342,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.PARKING])) \
                     and (not updateCapabilities or ('PARKING_POSITION' in self.capabilities and self.capabilities['PARKING_POSITION'].status.value is None)):
                 url = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
+                self.weConnect.session.setToken(client='technical')
                 data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
                                                                                                                  codes['no_content'],
                                                                                                                  codes['bad_gateway'],

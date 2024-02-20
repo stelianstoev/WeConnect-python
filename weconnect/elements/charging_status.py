@@ -98,13 +98,13 @@ class ChargingStatus(GenericStatus):
         if self.remainingChargingTimeToComplete_min.enabled:
             string += f'\n\tRemaining Charging Time: {self.remainingChargingTimeToComplete_min.value} minutes'
         if self.chargePower_kW.enabled:
-            string += f'\n\tCharge Power: {self.chargePower_kW} kW'
+            string += f'\n\tCharge Power: {self.chargePower_kW.value} kW'
         if self.chargeRate_kmph.enabled:
-            string += f'\n\tCharge Rate: {self.chargeRate_kmph} km/h'
+            string += f'\n\tCharge Rate: {self.chargeRate_kmph.value} km/h'
         if self.chargeType.enabled:
-            string += f'\n\tCharge Type: {self.chargeType.value}'
+            string += f'\n\tCharge Type: {self.chargeType.value.value}'
         if self.chargingSettings.enabled:
-            string += f'\n\tCharging Settings: {self.chargingSettings}'
+            string += f'\n\tCharging Settings: {self.chargingSettings.value}'
         return string
 
     class ChargingState(Enum,):

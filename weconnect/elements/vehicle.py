@@ -406,10 +406,10 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         # the known ones
                         for key, value in {key: value for key, value in data[domain.value].items()
                                            if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
-                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
+                            LOG.debug('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
                 # check that there is no additional domain than the configured ones
                 for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
-                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
+                    LOG.debug('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
             url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
             self.weConnect.session.setToken(client='connect')
@@ -472,10 +472,10 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         # the known ones
                         for key, value in {key: value for key, value in data[domain.value].items()
                                            if key not in list(keyClassMap.keys()) and key not in ['error']}.items():
-                            LOG.warning('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
+                            LOG.debug('%s: Unknown attribute %s with value %s in domain %s', self.getGlobalAddress(), key, value, domain.value)
                 # check that there is no additional domain than the configured ones
                 for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
-                    LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
+                    LOG.debug('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
             # if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.TRIPS])):
             #     try:

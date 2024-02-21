@@ -114,6 +114,12 @@ class MySkodaSession(VWWebSession):
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
+        if client == 'connect':
+            self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
+            self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
+        if client == 'technical':
+            self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
+            self.scope= 'openid mbb profile'
     def refresh(self):
         LOG.info("Refresh token for client: %s", self.token['client'])
         self.refreshTokens(

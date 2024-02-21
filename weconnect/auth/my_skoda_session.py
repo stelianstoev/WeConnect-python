@@ -224,7 +224,7 @@ class MySkodaSession(VWWebSession):
         form2Data['password'] = self.sessionuser.password
         if not all(x in ['_csrf', 'relayState', 'hmac', 'email', 'password'] for x in form2Data):
             raise APICompatibilityError('Could not find all required input fields in login page')
-
+        LOG.info('staring with authentication 3URL')
         login3Url = f'https://identity.vwgroup.io/signin-service/v1/{self.client_id}/{target}'
 
         # Post form content and retrieve userId in forwarding Location

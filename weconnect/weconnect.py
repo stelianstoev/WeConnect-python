@@ -192,6 +192,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                selective: Optional[list[Domain]] = None) -> None:
         self.__elapsed.clear()
         try:
+            LOG.info('staring updateVehicles')
             self.updateVehicles(updateCapabilities=updateCapabilities, updatePictures=updatePictures, force=force, selective=selective)
             self.updateChargingStations(force=force)
         finally:
@@ -204,6 +205,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             catchedRetrievalError = None
             url = 'https://api.connect.skoda-auto.cz/api/v3/garage'
             self.session.setToken('technical')
+            LOG.info("updating garage and token %s", self.session.token['client'])
             data = self.fetchData(url, force)
             if data is not None:
                 if 'vehicles' in data and data['vehicles']:
@@ -278,6 +280,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                 url += f'&searchRadius={self.searchRadius}'
             if self.session.userId is not None:
                 url += f'&userId={self.session.userId}'
+            LOG.info("update charging stations and token %s", self.session.token['client'])
             data = self.fetchData(url, force)
             if data is not None:
                 if 'chargingStations' in data and data['chargingStations']:

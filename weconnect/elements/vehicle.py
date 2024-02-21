@@ -343,7 +343,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                     and (not updateCapabilities or ('PARKING_POSITION' in self.capabilities and self.capabilities['PARKING_POSITION'].status.value is None)):
                 url = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
                 self.weConnect.session.setToken(client='technical')
-                LOG.info("update parking-position and token %s", self.session.token['client'])
+                LOG.info("update parking-position and token %s", self.weConnect.session.token['client'])
                 data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
                                                                                                                  codes['no_content'],
                                                                                                                  codes['bad_gateway'],
@@ -369,7 +369,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
             url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
             self.weConnect.session.setToken(client='connect')
-            LOG.info("update vehicle-status and token %s", self.session.token['client'])
+            LOG.info("update vehicle-status and token %s", self.weConnect.session.token['client'])
             data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
             if len(data) == 0:
                 LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
@@ -416,7 +416,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
             url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
             self.weConnect.session.setToken(client='connect')
-            LOG.info("update charging and token %s", self.session.token['client'])
+            LOG.info("update charging and token %s", self.weConnect.session.token['client'])
             data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
             if len(data) == 0:
                 LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)

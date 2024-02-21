@@ -384,6 +384,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                 elif statusResponse.status_code == requests.codes['too_many_requests']:
                     self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code),
                                      'Could not fetch data due to too many requests from your account')
+                    LOG.info("too many requests error in fetch with status code %s", statusResponse.status_code)
                     raise TooManyRequestsError('Could not fetch data due to too many requests from your account. '
                                                f'Status Code was: {statusResponse.status_code}')
                 elif statusResponse.status_code == requests.codes['unauthorized']:
@@ -406,16 +407,20 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                     self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code), 'Could not fetch data due to server error')
                     raise RetrievalError(f'Could not fetch data. Status Code was: {statusResponse.status_code}')
             except requests.exceptions.ConnectionError as connectionError:
+                LOG.info("connection error in fetch")
                 self.notifyError(self, ErrorEventType.CONNECTION, 'connection', 'Could not fetch data due to connection problem')
                 raise RetrievalError from connectionError
             except requests.exceptions.ChunkedEncodingError as chunkedEncodingError:
+                LOG.info("chunkedEncodingerror error in fetch")
                 self.notifyError(self, ErrorEventType.CONNECTION, 'chunked encoding error',
                                  'Could not fetch data due to connection problem with chunked encoding')
                 raise RetrievalError from chunkedEncodingError
             except requests.exceptions.ReadTimeout as timeoutError:
+                LOG.info("timeout error in fetch")
                 self.notifyError(self, ErrorEventType.TIMEOUT, 'timeout', 'Could not fetch data due to timeout')
                 raise RetrievalError from timeoutError
             except requests.exceptions.RetryError as retryError:
+                LOG.info("retry error in fetch")
                 raise RetrievalError from retryError
             except requests.exceptions.JSONDecodeError as jsonError:
                 if allowEmpty:

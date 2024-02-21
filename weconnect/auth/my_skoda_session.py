@@ -237,6 +237,7 @@ class MySkodaSession(VWWebSession):
         login3Response: requests.Response = websession.post(login3Url, headers=loginHeadersForm, data=form2Data, allow_redirects=False)
         if login3Response.status_code not in (requests.codes['found'], requests.codes['see_other']):
             if login3Response.status_code == requests.codes['internal_server_error']:
+                LOG.info("Retrieval error with status code %s", login3Response.status_code)
                 raise RetrievalError('Temporary server error during login')
             raise APICompatibilityError('Forwarding expected (status code 302),'
                                         f' but got status code {login3Response.status_code}')
@@ -257,12 +258,15 @@ class MySkodaSession(VWWebSession):
                 error = errorMessages[params['error']]
             else:
                 error = params['error']
+            LOG.info("problem with authentication: %s", error)
             raise AuthentificationError(error)
 
         # Check for user id
         if 'userId' not in params or not params['userId']:
             if 'updated' in params and params['updated'] == 'dataprivacy':
+                LOG.info("You have to login at myvolkswagen.de and accept the terms and conditions")
                 raise AuthentificationError('You have to login at myvolkswagen.de and accept the terms and conditions')
+            LOG.info("No user id provided")
             raise APICompatibilityError('No user id provided')
         self.userId = params['userId']  # pylint: disable=unused-private-member
 
@@ -279,8 +283,10 @@ class MySkodaSession(VWWebSession):
 
             if 'Location' not in afterLoginResponse.headers:
                 if consentURL is not None:
+                    LOG.info("It seems like you need to accept the terms and conditions for the MySkoda service. Visit %s", consentURL)
                     raise AuthentificationError('It seems like you need to accept the terms and conditions for the MySkoda service.'
                                                 f' Try to visit the URL "{consentURL}" or log into the MySkoda smartphone app')
+                LOG.info("No Location for forwarding in response headers. PROBLEM..")
                 raise APICompatibilityError('No Location for forwarding in response headers')
 
             afterLoginUrl = afterLoginResponse.headers['Location']

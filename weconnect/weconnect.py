@@ -246,27 +246,28 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     def getChargingStations(self, latitude, longitude, searchRadius=None, market=None, useLocale=None,  # noqa: C901
                             force=False) -> AddressableDict[str, ChargingStation]:
         chargingStationMap: AddressableDict[str, ChargingStation] = AddressableDict(localAddress='', parent=None)
-        url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={latitude}&longitude={longitude}'
-        if market is not None:
-            url += f'&market={market}'
-        if useLocale is not None:
-            url += f'&locale={useLocale}'
-        if searchRadius is not None:
-            url += f'&searchRadius={searchRadius}'
-        if self.session.userId is not None:
-            url += f'&userId={self.session.userId}'
-        data = self.fetchData(url, force)
-        if data is not None:
-            if 'chargingStations' in data and data['chargingStations']:
-                for stationDict in data['chargingStations']:
-                    if 'id' not in stationDict:
-                        break
-                    stationId: str = stationDict['id']
-                    station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
-                                                               fixAPI=self.fixAPI)
-                    chargingStationMap[stationId] = station
+        if self.latitude is not None and self.longitude is not None:
+            url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={latitude}&longitude={longitude}'
+            if market is not None:
+                url += f'&market={market}'
+            if useLocale is not None:
+                url += f'&locale={useLocale}'
+            if searchRadius is not None:
+                url += f'&searchRadius={searchRadius}'
+            if self.session.userId is not None:
+                url += f'&userId={self.session.userId}'
+            data = self.fetchData(url, force)
+            if data is not None:
+                if 'chargingStations' in data and data['chargingStations']:
+                    for stationDict in data['chargingStations']:
+                        if 'id' not in stationDict:
+                            break
+                        stationId: str = stationDict['id']
+                        station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
+                                                                fixAPI=self.fixAPI)
+                        chargingStationMap[stationId] = station
 
-                self.__cache[url] = (data, str(datetime.utcnow()))
+                    self.__cache[url] = (data, str(datetime.utcnow()))
         return chargingStationMap
 
     def updateChargingStations(self, force: bool = False) -> None:  # noqa: C901 # pylint: disable=too-many-branches

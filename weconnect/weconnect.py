@@ -226,7 +226,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                                                             selective=selective)
                         except RetrievalError as retrievalError:
                             catchedRetrievalError = retrievalError
-                            LOG.error('Failed to retrieve data for VIN %s: %s', vin, retrievalError)
+                            LOG.info('Failed to retrieve data for VIN %s: %s', vin, retrievalError)
                     # delete those vins that are not anymore available
                     for vin in [vin for vin in self.__vehicles if vin not in vins]:
                         del self.__vehicles[vin]
@@ -378,14 +378,15 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             try:
                 statusResponse: requests.Response = self.session.get(url, allow_redirects=False)
                 self.recordElapsed(statusResponse.elapsed)
+                LOG.info("fetched response code: %s", statusResponse.status_code)
                 if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
                     data = statusResponse.json()
                     if self.cache is not None:
                         self.cache[url] = (data, str(datetime.utcnow()))
                 elif statusResponse.status_code == requests.codes['too_many_requests']:
+                    LOG.info("too many requests error in fetch with status code %s", statusResponse.status_code)
                     self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code),
                                      'Could not fetch data due to too many requests from your account')
-                    LOG.info("too many requests error in fetch with status code %s", statusResponse.status_code)
                     raise TooManyRequestsError('Could not fetch data due to too many requests from your account. '
                                                f'Status Code was: {statusResponse.status_code}')
                 elif statusResponse.status_code == requests.codes['unauthorized']:

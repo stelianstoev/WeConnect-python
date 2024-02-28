@@ -532,13 +532,15 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             url = MODELHOST + path
             LOG.info("Picture url: %s", url)
 
+            #self.weConnect.session.removeToken()
             #url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
             data = requests.get(url)
+            #data = self.weConnect.fetchData(url, allowHttpError=True)
             LOG.info("Data from picture: %s", data)
             if data is not None:  # pylint: disable=too-many-nested-blocks
                 img = None
                 cacheDate = None
-                imageurl: str = url
+                imageurl: str = data.url.split('?')[0]
                 if self.weConnect.maxAgePictures is not None and self.weConnect.cache is not None and imageurl in self.weConnect.cache:
                     img, cacheDateString = self.weConnect.cache[imageurl]
                     img = base64.b64decode(img)
@@ -547,15 +549,15 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 if img is None or self.weConnect.maxAgePictures is None \
                         or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
                     try:
-                        imageDownloadResponse = data.content
-                        
-                        img = Image.open(imageDownloadResponse)
-                        if self.weConnect.cache is not None:
-                            buffered = io.BytesIO()
-                            img.save(buffered, format="PNG")
-                            imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                            self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
-                    
+                        imageDownloadResponse = requests.get(imageurl)
+                        self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
+                        if imageDownloadResponse.status_code == codes['ok']:
+                            img = Image.open(imageDownloadResponse.raw)
+                            if self.weConnect.cache is not None:
+                                buffered = io.BytesIO()
+                                img.save(buffered, format="PNG")
+                                imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                                self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
                     except exceptions.ConnectionError as connectionError:
                         self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',
                                                     'Could not fetch vehicle image due to connection problem')
@@ -571,15 +573,15 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         raise RetrievalError from retryError
 
                 if img is not None:
-                    self.__carImages[image['id']] = img
-                    if image['id'] == 'car_34view':
+                    self.__carImages["car_34view"] = img
+                    if 'car_34view' == 'car_34view':
                         if 'car' in self.pictures:
                             self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
                         else:
                             self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['car_34view'],
                                                                         valueType=Image.Image)
 
-            self.updateStatusPicture()
+                #self.updateStatusPicture()
 
     def updateStatusPicture(self) -> None:  # noqa: C901
         if not SUPPORT_IMAGES:

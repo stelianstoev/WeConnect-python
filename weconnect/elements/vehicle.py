@@ -570,7 +570,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
                 if img is not None:
                     self.__carImages["car_birdview"] = img
-                    if 'no' == 'car_34view':
+                    self.__carImages["car_34view"] = img
+                    if 'car_34view' == 'car_34view':
                         if 'car' in self.pictures:
                             self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
                         else:

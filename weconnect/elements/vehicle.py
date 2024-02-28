@@ -530,13 +530,9 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
             path = MODELAPI +'?vin='+ self.vin.value +'&view='+ MODELVIEWS +'&appId='+ MODELAPPID +'&date='+ date +'&'+ sign
             url = MODELHOST + path
-            LOG.info("Picture url: %s", url)
 
-            #self.weConnect.session.removeToken()
             #url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
             data = requests.get(url)
-            #data = self.weConnect.fetchData(url, allowHttpError=True)
-            LOG.info("Data from picture: %s", data)
             if data is not None:  # pylint: disable=too-many-nested-blocks
                 img = None
                 cacheDate = None
@@ -554,6 +550,9 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         if imageDownloadResponse.status_code == codes['ok']:
                             if self.weConnect.cache is not None:
                                 imgStr = base64.b64encode(imageDownloadResponse.content).decode("utf-8")
+                                img = imgStr
+                                img = base64.b64decode(img)
+                                img = Image.open(io.BytesIO(img))
                                 self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
                     except exceptions.ConnectionError as connectionError:
                         self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',
@@ -571,7 +570,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
                 if img is not None:
                     self.__carImages["car_birdview"] = img
-                    if 'car_34view' == 'car_34view':
+                    if 'no' == 'car_34view':
                         if 'car' in self.pictures:
                             self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
                         else:

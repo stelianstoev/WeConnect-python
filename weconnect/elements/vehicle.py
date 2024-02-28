@@ -16,6 +16,8 @@ from weconnect.elements.generic_status import GenericStatus
 
 from requests import exceptions, codes
 
+import requests
+
 from weconnect.addressable import AddressableObject, AddressableAttribute, AddressableDict, AddressableList
 if TYPE_CHECKING:
     from weconnect.weconnect import WeConnect
@@ -235,7 +237,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 badgeImg.thumbnail((100, 100))
                 self.__badges[badge] = badgeImg
 
-            #self.updatePictures()
+            self.updatePictures()
 
     def updateStatus(self, updateCapabilities: bool = True, force: bool = False,  # noqa: C901 # pylint: disable=too-many-branches
                      selective: Optional[list[Domain]] = None):
@@ -510,8 +512,6 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
     def updatePictures(self) -> None:  # noqa: C901
         LOG.info("Start updatePictures")
-        if not SUPPORT_IMAGES:
-            return
         with self.lock:
             MODELVIEWS = 'main'                                     # Related to image size, small
             MODELAPPID = 'ModcwpMobile'                             # Client ID, other ID might require other key
@@ -533,77 +533,53 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             LOG.info("Picture url: %s", url)
 
             #url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
-            data = self.weConnect.fetchData(url, allowHttpError=True)
+            data = requests.get(url)
             LOG.info("Data from picture: %s", data)
-            if data is not None and 'data' in data:  # pylint: disable=too-many-nested-blocks
-                for image in data['data']:
-                    img = None
-                    cacheDate = None
-                    imageurl: str = image['url']
-                    if self.weConnect.maxAgePictures is not None and self.weConnect.cache is not None and imageurl in self.weConnect.cache:
-                        img, cacheDateString = self.weConnect.cache[imageurl]
-                        img = base64.b64decode(img)
-                        img = Image.open(io.BytesIO(img))
-                        cacheDate = datetime.fromisoformat(cacheDateString)
-                    if img is None or self.weConnect.maxAgePictures is None \
-                            or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
-                        try:
-                            imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
-                            self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
-                            if imageDownloadResponse.status_code == codes['ok']:
-                                img = Image.open(imageDownloadResponse.raw)
-                                if self.weConnect.cache is not None:
-                                    buffered = io.BytesIO()
-                                    img.save(buffered, format="PNG")
-                                    imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                    self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
-                            elif imageDownloadResponse.status_code == codes['unauthorized']:
-                                LOG.info('Server asks for new authorization')
-                                self.weConnect.login()
-                                imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
-                                self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
-                                if imageDownloadResponse.status_code == codes['ok']:
-                                    img = Image.open(imageDownloadResponse.raw)
-                                    if self.weConnect.cache is not None:
-                                        buffered = io.BytesIO()
-                                        img.save(buffered, format="PNG")
-                                        imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                        self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
-                                else:
-                                    self.weConnect.notifyError(self, ErrorEventType.HTTP, str(imageDownloadResponse.status_code),
-                                                               'Could not fetch vehicle image due to server error')
-                                    raise RetrievalError('Could not retrieve vehicle image even after re-authorization.'
-                                                         f' Status Code was: {imageDownloadResponse.status_code}')
-                                self.weConnect.notifyError(self, ErrorEventType.HTTP, str(imageDownloadResponse.status_code),
-                                                           'Could not fetch vehicle image due to server error')
-                                raise RetrievalError(f'Could not retrieve vehicle image. Status Code was: {imageDownloadResponse.status_code}')
-                            else:
-                                LOG.warning('Failed downloading picture %s with status code %d will try again in next update', image['id'],
-                                            imageDownloadResponse.status_code)
-                        except exceptions.ConnectionError as connectionError:
-                            self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',
-                                                       'Could not fetch vehicle image due to connection problem')
-                            raise RetrievalError from connectionError
-                        except exceptions.ChunkedEncodingError as chunkedEncodingError:
-                            self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'chunked encoding error',
-                                                       'Could not refresh token due to connection problem with chunked encoding')
-                            raise RetrievalError from chunkedEncodingError
-                        except exceptions.ReadTimeout as timeoutError:
-                            self.weConnect.notifyError(self, ErrorEventType.TIMEOUT, 'timeout', 'Could not fetch vehicle image due to timeout')
-                            raise RetrievalError from timeoutError
-                        except exceptions.RetryError as retryError:
-                            raise RetrievalError from retryError
+            if data is not None:  # pylint: disable=too-many-nested-blocks
+                img = None
+                cacheDate = None
+                imageurl: str = url
+                if self.weConnect.maxAgePictures is not None and self.weConnect.cache is not None and imageurl in self.weConnect.cache:
+                    img, cacheDateString = self.weConnect.cache[imageurl]
+                    img = base64.b64decode(img)
+                    img = Image.open(io.BytesIO(img))
+                    cacheDate = datetime.fromisoformat(cacheDateString)
+                if img is None or self.weConnect.maxAgePictures is None \
+                        or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
+                    try:
+                        imageDownloadResponse = data.content
+                        
+                        img = Image.open(imageDownloadResponse)
+                        if self.weConnect.cache is not None:
+                            buffered = io.BytesIO()
+                            img.save(buffered, format="PNG")
+                            imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                            self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
+                    
+                    except exceptions.ConnectionError as connectionError:
+                        self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',
+                                                    'Could not fetch vehicle image due to connection problem')
+                        raise RetrievalError from connectionError
+                    except exceptions.ChunkedEncodingError as chunkedEncodingError:
+                        self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'chunked encoding error',
+                                                    'Could not refresh token due to connection problem with chunked encoding')
+                        raise RetrievalError from chunkedEncodingError
+                    except exceptions.ReadTimeout as timeoutError:
+                        self.weConnect.notifyError(self, ErrorEventType.TIMEOUT, 'timeout', 'Could not fetch vehicle image due to timeout')
+                        raise RetrievalError from timeoutError
+                    except exceptions.RetryError as retryError:
+                        raise RetrievalError from retryError
 
-                    if img is not None:
-                        self.__carImages[image['id']] = img
-                        if image['id'] == 'car_34view':
-                            if 'car' in self.pictures:
-                                self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
-                            else:
-                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['car_34view'],
-                                                                            valueType=Image.Image)
+                if img is not None:
+                    self.__carImages[image['id']] = img
+                    if image['id'] == 'car_34view':
+                        if 'car' in self.pictures:
+                            self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
+                        else:
+                            self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['car_34view'],
+                                                                        valueType=Image.Image)
 
-                self.updateStatusPicture()
+            self.updateStatusPicture()
 
     def updateStatusPicture(self) -> None:  # noqa: C901
         if not SUPPORT_IMAGES:

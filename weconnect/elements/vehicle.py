@@ -237,7 +237,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 badgeImg.thumbnail((100, 100))
                 self.__badges[badge] = badgeImg
 
-            self.updatePictures()
+        self.updatePictures()
 
     def updateStatus(self, updateCapabilities: bool = True, force: bool = False,  # noqa: C901 # pylint: disable=too-many-branches
                      selective: Optional[list[Domain]] = None):
@@ -552,11 +552,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         imageDownloadResponse = requests.get(imageurl)
                         self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
                         if imageDownloadResponse.status_code == codes['ok']:
-                            img = Image.open(imageDownloadResponse.raw)
                             if self.weConnect.cache is not None:
-                                buffered = io.BytesIO()
-                                img.save(buffered, format="PNG")
-                                imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                                imgStr = base64.b64encode(imageDownloadResponse.content).decode("utf-8")
                                 self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
                     except exceptions.ConnectionError as connectionError:
                         self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',

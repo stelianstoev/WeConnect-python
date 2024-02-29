@@ -70,6 +70,14 @@ class MySkodaSession(VWWebSession):
     def login(self, client='technical'):
         LOG.info('starting login with skoda session')
         self.cookies.clear()
+        
+        if client in self._session_tokens and  len(self._session_tokens[client]) > 0:
+            LOG.info('Revoking old tokens for client %s.', client)
+            try:
+                self.logout(client)
+            except:
+                pass
+        
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
@@ -108,6 +116,38 @@ class MySkodaSession(VWWebSession):
         if client != 'connect':
             self.login(client='connect')
 
+    def logout(self, client:str):
+        """Logout, revoke tokens."""
+        try:
+            refresh_token = self._session_tokens[client]['refresh_token']
+            self.revoke_token(refresh_token, client)
+        except:
+            LOG.info('Some problem occured while revoking tokens, ignoring...')
+            pass
+
+    def revoke_token(self, refresh_token, client):
+        """Revoke refresh token for supplied client."""
+        try:
+            req_headers = TOKEN_HEADERS[client]
+            # "Skoda" tokens
+            params: str = json.dumps(
+                {
+                    'refreshToken': refresh_token,
+                })
+
+            revoke_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token/revoke?systemId='+client
+            revokation_response = self.post(revoke_url, headers = req_headers, data = params)
+            if revokation_response.status_code == requests.codes['no_content']:
+                LOG.info(f'Revocation of token for client "{client}" successful')
+                # Remove tokens from storage
+                self._session_tokens[client] = {}
+                return True
+            else:
+                LOG.info(f'Revocation of token for client "{client}" failed')
+                return False
+        except Exception as e:
+            LOG.info(f'Revocation of token for {client} failed with error: {e}')
+        return False
 
     def setToken(self, client:str):
         self.token = self._session_tokens[client]
@@ -121,6 +161,7 @@ class MySkodaSession(VWWebSession):
         if client == 'technical':
             self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
             self.scope= 'openid mbb profile'
+
     def refresh(self):
         LOG.info("Refresh token for client: %s", self.token['client'])
         self.refreshTokens(
@@ -392,6 +433,8 @@ class MySkodaSession(VWWebSession):
             raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: {tokenResponse.status_code}')
         elif tokenResponse.status_code == requests.codes['ok']:
             LOG.info("Refresh is successful!")
+            self.revoke_token(self.token['refresh_token'], client)
+            LOG.info("Revoke old token successful!")
             token_data = self.parseFromBody(tokenResponse.text)
 
             self._session_tokens[client]['access_token'] = token_data.get('access_token', token_data.get('accessToken', ''))

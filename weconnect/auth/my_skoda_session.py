@@ -69,6 +69,7 @@ class MySkodaSession(VWWebSession):
 
     def login(self, client='technical'):
         LOG.info('starting login with skoda session')
+        self.cookies.clear()
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
@@ -135,10 +136,12 @@ class MySkodaSession(VWWebSession):
         websession.proxies.update(self.proxies)
         websession.mount('https://', HTTPAdapter(max_retries=retries))
         websession.headers = CaseInsensitiveDict({
-            'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'accept-language': 'en-US,en;q=0.9',
-            'accept-encoding': 'gzip, deflate, br'
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+                'x-requested-with': 'cz.skodaauto.connect',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive'
         })
         while True:
             loginFormResponse: requests.Response = websession.get(authorizationUrl, allow_redirects=False)

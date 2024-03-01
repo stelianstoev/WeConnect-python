@@ -93,18 +93,14 @@ class MySkodaSession(VWWebSession):
         LOG.info('Client_id is: %s', self.client_id)
         LOG.info('Scope is: %s', self.scope)
 
-        token_data = self.fetchTokens('https://api.connect.skoda-auto.cz/api/v1/authentication/token?systemId=' + client,
+        token_data = self.fetchTokens(client,
                          authorization_response=response
                          )
         
-        self._session_tokens[client] = {}
         LOG.info('%s: token is fetched', client)
 
         # Assume that tokens were received OK
         if not 'error' in token_data:
-            self._session_tokens[client]['access_token'] = token_data.get('access_token', token_data.get('accessToken', ''))
-            self._session_tokens[client]['refresh_token'] = token_data.get('refresh_token', token_data.get('refreshToken', ''))
-            self._session_tokens[client]['id_token'] = token_data.get('id_token', token_data.get('idToken', ''))
             self.token['client'] = client
         else:
             error = token_data.get('error', '')
@@ -152,10 +148,10 @@ class MySkodaSession(VWWebSession):
         return False
 
     def setToken(self, client:str):
-        token = self._session_tokens[client]['access_token']
+        token = self._session_tokens[client]['token_raw']['access_token']
         valid = False
 
-        self.token = self._session_tokens[client]
+        self.token = self._session_tokens[client]['token_raw']
         self.token['client'] = client
 
         if token is not False:
@@ -169,12 +165,13 @@ class MySkodaSession(VWWebSession):
                 LOG.info(f'Tokens refreshed successfully for client "{client}"')
                 pass
         
-        self.token = self._session_tokens[client]
+        self.token = self._session_tokens[client]['token_raw']
         self.token['client'] = client
 
-        self.accessToken = self._session_tokens[client]['access_token']
-        self.refreshToken = self._session_tokens[client]['refresh_token']
-        self.idToken = self._session_tokens[client]['id_token']
+        #self.accessToken = self._session_tokens[client]['access_token']
+        #self.refreshToken = self._session_tokens[client]['refresh_token']
+        #self.idToken = self._session_tokens[client]['id_token']
+
 
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
@@ -403,10 +400,11 @@ class MySkodaSession(VWWebSession):
 
     def fetchTokens(
         self,
-        token_url,
+        client,
         authorization_response=None,
         **kwargs
     ):
+        token_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token?systemId=' + client
 
         self.parseFromFragment(authorization_response)
 
@@ -432,6 +430,8 @@ class MySkodaSession(VWWebSession):
                 raise TemporaryAuthentificationError(f'Token could not be fetched due to temporary MySkoda failure: {tokenResponse.status_code}')
             
             token = self.parseFromBody(tokenResponse.text)
+            self._session_tokens[client] = {}
+            self._session_tokens[client]['token_raw'] = token
 
             return token
 
@@ -495,9 +495,7 @@ class MySkodaSession(VWWebSession):
             LOG.info("Revoke old token successful!")
             token_data = self.parseFromBody(tokenResponse.text)
 
-            self._session_tokens[client]['access_token'] = token_data.get('access_token', token_data.get('accessToken', ''))
-            self._session_tokens[client]['refresh_token'] = token_data.get('refresh_token', token_data.get('refreshToken', ''))
-            self._session_tokens[client]['id_token'] = token_data.get('id_token', token_data.get('idToken', ''))
+            self._session_tokens[client]['token_raw'] = token_data
             self.token['client'] = client
             if "refresh_token" not in self.token:
                 LOG.info("No new refresh token given. Re-using old.")

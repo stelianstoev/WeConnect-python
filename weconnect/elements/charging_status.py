@@ -35,6 +35,8 @@ class ChargingStatus(GenericStatus):
         LOG.debug('Update Charging status from dict')
 
         if 'chargingStatus' in fromDict:
+            fromDict['chargingStatus']['chargePower_kW'] /= 1000
+            fromDict['chargingStatus']['remainingChargingTimeToComplete_min'] /= 60
             self.remainingChargingTimeToComplete_min.fromDict(fromDict['chargingStatus'], 'remainingChargingTimeToComplete_min')
             self.chargingState.fromDict(fromDict['chargingStatus'], 'chargingState')
             self.chargeMode.fromDict(fromDict['chargingStatus'], 'chargeMode')

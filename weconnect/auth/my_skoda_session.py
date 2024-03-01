@@ -1,4 +1,6 @@
+from datetime import datetime
 from typing import Dict, Optional, Match
+import jwt
 
 import re
 import json
@@ -112,7 +114,7 @@ class MySkodaSession(VWWebSession):
             else:
                 raise TemporaryAuthentificationError(error)
         for key in self._session_tokens.get(client, {}):
-            LOG.debug(f'Got {key} for client {client}, token: "{self._session_tokens.get(client, {}).get(key, None)}"')
+            LOG.info(f'Got {key} for client {client}, token: "{self._session_tokens.get(client, {}).get(key, None)}"')
         if client != 'connect':
             self.login(client='connect')
 
@@ -150,11 +152,26 @@ class MySkodaSession(VWWebSession):
         return False
 
     def setToken(self, client:str):
-        self.token = self._session_tokens[client]
-        self.token['client'] = client
+        token = self._session_tokens[client]['access_token']
+        valid = False
+        if token is not False:
+            valid = self.validate_token(token)
+        if not valid:
+            LOG.info(f'No valid access token for "{client}"')
+            # Try to refresh tokens for client
+            if self.refreshTokens(client) is not True:
+                raise RetrievalError(f'No valid tokens for client "{client}"')
+            else:
+                LOG.info(f'Tokens refreshed successfully for client "{client}"')
+                pass
+        
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
+
+        self.token = self._session_tokens[client]
+        self.token['client'] = client
+
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
             self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
@@ -162,10 +179,46 @@ class MySkodaSession(VWWebSession):
             self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
             self.scope= 'openid mbb profile'
 
+    def validate_token(self, token):
+        """Function to validate a single token."""
+        try:
+            now = datetime.now()
+            exp = self.decode_token(token).get('exp', None)
+            expires = datetime.fromtimestamp(int(exp))
+
+            # Lazy check but it's very inprobable that the token expires the very second we want to use it
+            if expires > now:
+                return expires
+            else:
+                LOG.info(f'Token expired at {expires.strftime("%Y-%m-%d %H:%M:%S")})')
+                return False
+        except Exception as e:
+            LOG.info(f'Token validation failed, {e}')
+        return False
+    
+    def decode_token(self, token):
+        """Helper method to deocde jwt token, different syntax in different versions."""
+        # Try old pyJWT syntax first
+        try:
+            decoded = jwt.decode(token, verify=False)
+        except:
+            decoded = None
+        # Try new pyJWT syntax if old fails
+        if decoded is None:
+            try:
+                decoded = jwt.decode(token, options={'verify_signature': False})
+            except:
+                decoded = None
+        if decoded is None:
+            raise RetrievalError('Failed to decode token')
+        else:
+            return decoded
+
+
     def refresh(self):
         LOG.info("Refresh token for client: %s", self.token['client'])
         self.refreshTokens(
-            'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + self.token['client']
+            self.token['client']
         )
 
     def doWebAuth(self, authorizationUrl):  # noqa: C901
@@ -394,7 +447,7 @@ class MySkodaSession(VWWebSession):
     
     def refreshTokens(
         self,
-        token_url,
+        client,
         refresh_token=None,
         auth=None,
         timeout=None,
@@ -403,6 +456,7 @@ class MySkodaSession(VWWebSession):
         proxies=None,
         **kwargs
     ):
+        token_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + client
         LOG.info('Refreshing tokens with url: %s', token_url)
         if not token_url:
             raise ValueError("No token endpoint set for auto_refresh.")
@@ -419,6 +473,7 @@ class MySkodaSession(VWWebSession):
                     'refreshToken': self.token['refresh_token'],
                 })
 
+        LOG.info('Firing post request for refresh!')
         tokenResponse = self.post(
             token_url,
             data=body,

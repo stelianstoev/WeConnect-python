@@ -209,19 +209,22 @@ class OpenIDSession(requests.Session):
                 LOG.info('Token expired')
                 self.accessToken = None
                 try:
-                    self.login()
+                    self.refresh()
                 except AuthentificationError:
+                    LOG.info('AuthentificationError in openid_sessionid.')
                     self.login()
                 except TokenExpiredError:
+                    LOG.info('TokenExpiredError in openid_sessionid.')
                     self.login()
                 except MissingTokenError:
+                    LOG.info('MissingTokenError in openid_sessionid.')
                     self.login()
                 except RetrievalError:
                     LOG.error('Retrieval Error while refreshing token. Probably the token was invalidated. Trying to do a new login instead.')
                     self.login()
                 url, headers, data = self.addToken(url, body=data, headers=headers, access_type=access_type, token=token)
             except MissingTokenError:
-                LOG.error('Missing token')
+                LOG.info('Missing token')
                 self.login()
                 url, headers, data = self.addToken(url, body=data, headers=headers, access_type=access_type, token=token)
 

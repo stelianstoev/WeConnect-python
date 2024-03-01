@@ -165,12 +165,13 @@ class MySkodaSession(VWWebSession):
                 LOG.info(f'Tokens refreshed successfully for client "{client}"')
                 pass
         
+        self.token = self._session_tokens[client]
+        self.token['client'] = client
+
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
 
-        self.token = self._session_tokens[client]
-        self.token['client'] = client
 
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'

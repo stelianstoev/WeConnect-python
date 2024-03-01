@@ -40,7 +40,7 @@ class ChargingStatus(GenericStatus):
             self.chargeMode.fromDict(fromDict['chargingStatus'], 'chargeMode')
             self.chargePower_kW.fromDict(fromDict['chargingStatus'], 'chargePower_kW')
             if 'chargePower_kW' in fromDict['chargingStatus']:
-                chargePower_kW = float(fromDict['chargingStatus']['chargePower_kW']*1000)
+                chargePower_kW = float(fromDict['chargingStatus']['chargePower_kW'])
                 if self.fixAPI and chargePower_kW != 0 \
                         and self.chargingState.value in [ChargingStatus.ChargingState.OFF,
                                                          ChargingStatus.ChargingState.READY_FOR_CHARGING,

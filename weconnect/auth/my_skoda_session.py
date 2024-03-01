@@ -154,12 +154,16 @@ class MySkodaSession(VWWebSession):
     def setToken(self, client:str):
         token = self._session_tokens[client]['access_token']
         valid = False
+
+        self.token = self._session_tokens[client]
+        self.token['client'] = client
+
         if token is not False:
             valid = self.validate_token(token)
         if not valid:
             LOG.info(f'No valid access token for "{client}"')
             # Try to refresh tokens for client
-            if self.refreshTokens(client) is not True:
+            if self.refreshTokens(client) is True:
                 raise RetrievalError(f'No valid tokens for client "{client}"')
             else:
                 LOG.info(f'Tokens refreshed successfully for client "{client}"')
@@ -171,7 +175,6 @@ class MySkodaSession(VWWebSession):
         self.accessToken = self._session_tokens[client]['access_token']
         self.refreshToken = self._session_tokens[client]['refresh_token']
         self.idToken = self._session_tokens[client]['id_token']
-
 
         if client == 'connect':
             self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
@@ -464,8 +467,7 @@ class MySkodaSession(VWWebSession):
 
         if not is_secure_transport(token_url):
             raise InsecureTransportError()
-
-        client = self.token['client']
+        
         if headers is None:
             headers = TOKEN_HEADERS.get(client)
         

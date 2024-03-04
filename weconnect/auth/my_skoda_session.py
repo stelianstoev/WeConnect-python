@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional, Match
 import jwt
 
@@ -71,6 +71,7 @@ class MySkodaSession(VWWebSession):
 
     def login(self, client='technical'):
         LOG.info('starting login with skoda session')
+        super(MySkodaSession, self).login()
         self.cookies.clear()
         
         if client in self._session_tokens and  len(self._session_tokens[client]) > 0:
@@ -183,7 +184,7 @@ class MySkodaSession(VWWebSession):
     def validate_token(self, token):
         """Function to validate a single token."""
         try:
-            now = datetime.now()
+            now = datetime.now() + timedelta(minutes = 4)
             exp = self.decode_token(token).get('exp', None)
             expires = datetime.fromtimestamp(int(exp))
 

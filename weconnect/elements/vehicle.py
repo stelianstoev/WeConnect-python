@@ -377,7 +377,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
             if data is not None:
                 data['measurements'] = data['remote']
-                data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
+                if data['measurements']['mileageInKm']:
+                    data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
                 carCapturedTimestamp = data['measurements']['capturedAt']
                 data['measurements']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
                 del data['measurements']['mileageInKm']

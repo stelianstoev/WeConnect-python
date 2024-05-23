@@ -417,9 +417,6 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
                     LOG.debug('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
-            if (carCapturedTimestamp is None):
-                LOG.info("time was undefined, using current time instead")
-                carCapturedTimestamp = datetime.utcnow().replace(microsecond=0, tzinfo=timezone.utc);
             url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
             self.weConnect.session.setToken(client='connect')
             LOG.info("update charging and token %s", self.weConnect.session.token['client'])

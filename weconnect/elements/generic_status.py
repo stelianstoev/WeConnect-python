@@ -49,23 +49,27 @@ class GenericStatus(AddressableObject):
 
         if 'value' in fromDict:
             if 'carCapturedTimestamp' in fromDict['value']:
-                carCapturedTimestamp: Optional[datetime] = robustTimeParse(fromDict['value']['carCapturedTimestamp'])
-                if self.fixAPI and carCapturedTimestamp is not None:
-                    # Looks like for some cars the calculation of the carCapturedTimestamp does not account for the timezone
-                    # Unfortunatly it is unknown what the timezone of the car is. So the best we can do is substract 30
-                    # minutes as long as the timestamp is in the future. This will create false results when the query
-                    # interval is large
-                    fixed: timedelta = timedelta(hours=0, minutes=0)
-                    while carCapturedTimestamp > datetime.utcnow().replace(tzinfo=timezone.utc):
-                        carCapturedTimestamp -= timedelta(hours=0, minutes=30)
-                        fixed -= timedelta(hours=0, minutes=30)
-                    if fixed > timedelta(hours=0, minutes=0):
-                        LOG.warning('%s: Attribute carCapturedTimestamp was in the future. Substracted %s to fix this.'
-                                    ' This is a problem of the weconnect API and might be fixed in the future',
-                                    self.getGlobalAddress(), fixed)
-                    if carCapturedTimestamp == datetime(year=2000, month=1, day=1, hour=0, minute=0, second=0,
-                                                        tzinfo=timezone.utc):
-                        carCapturedTimestamp = None
+                if fromDict['value']['carCapturedTimestamp'] is None:
+                    self.carCapturedTimestamp.setValueWithCarTime(None, fromServer=True)
+                    self.carCapturedTimestamp.enabled = False
+                else:
+                    carCapturedTimestamp: Optional[datetime] = robustTimeParse(fromDict['value']['carCapturedTimestamp'])
+                    if self.fixAPI and carCapturedTimestamp is not None:
+                        # Looks like for some cars the calculation of the carCapturedTimestamp does not account for the timezone
+                        # Unfortunatly it is unknown what the timezone of the car is. So the best we can do is substract 30
+                        # minutes as long as the timestamp is in the future. This will create false results when the query
+                        # interval is large
+                        fixed: timedelta = timedelta(hours=0, minutes=0)
+                        while carCapturedTimestamp > datetime.utcnow().replace(tzinfo=timezone.utc):
+                            carCapturedTimestamp -= timedelta(hours=0, minutes=30)
+                            fixed -= timedelta(hours=0, minutes=30)
+                        if fixed > timedelta(hours=0, minutes=0):
+                            LOG.warning('%s: Attribute carCapturedTimestamp was in the future. Substracted %s to fix this.'
+                                        ' This is a problem of the weconnect API and might be fixed in the future',
+                                        self.getGlobalAddress(), fixed)
+                        if carCapturedTimestamp == datetime(year=2000, month=1, day=1, hour=0, minute=0, second=0,
+                                                            tzinfo=timezone.utc):
+                            carCapturedTimestamp = None
 
                 self.carCapturedTimestamp.setValueWithCarTime(carCapturedTimestamp, lastUpdateFromCar=None, fromServer=True)
                 if self.carCapturedTimestamp.value is None:

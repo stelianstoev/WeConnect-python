@@ -27,8 +27,6 @@ except ImportError:
 
 
 def robustTimeParse(timeString: str) -> datetime:
-    if timeString is None:
-        timeString = datetime.utcnow().replace(microsecond=0, tzinfo=timezone.utc);
     timeString = timeString.replace('Z', '+00:00')
     match = re.search(
         r'^(?P<start>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.)(?P<fractions>\d+)(?P<end>\+\d{2}:\d{2})$', timeString)

@@ -455,7 +455,6 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 del data['charging']['chargingType']
                 del data['charging']['chargeMode']
                 del data['charging']['chargingSettings']
-                del data['charging']['plugStatus']
 
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:

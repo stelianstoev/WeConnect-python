@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from http.client import RemoteDisconnected
 from typing import Dict, Optional, Match
 import jwt
 
@@ -460,50 +461,55 @@ class MySkodaSession(VWWebSession):
         verify=True,
         proxies=None,
         **kwargs
-    ):
-        token_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + client
-        LOG.info('Refreshing tokens with url: %s', token_url)
-        if not token_url:
-            raise ValueError("No token endpoint set for auto_refresh.")
+    ): 
+        try:
+            token_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + client
+            LOG.info('Refreshing tokens with url: %s', token_url)
+            if not token_url:
+                raise ValueError("No token endpoint set for auto_refresh.")
 
-        if not is_secure_transport(token_url):
-            raise InsecureTransportError()
-        
-        if headers is None:
-            headers = TOKEN_HEADERS.get(client)
-        
-        body: str = json.dumps(
-                {
-                    'refreshToken': self.token['refresh_token'],
-                })
+            if not is_secure_transport(token_url):
+                raise InsecureTransportError()
+            
+            if headers is None:
+                headers = TOKEN_HEADERS.get(client)
+            
+            body: str = json.dumps(
+                    {
+                        'refreshToken': self.token['refresh_token'],
+                    })
 
-        LOG.info('Firing post request for refresh!')
-        tokenResponse = self.post(
-            token_url,
-            data=body,
-            auth=auth,
-            timeout=timeout,
-            headers=headers
-        )
-        LOG.info("TokenResponse from refresh is %s", tokenResponse.status_code)
-        if tokenResponse.status_code == requests.codes['unauthorized']:
-            raise AuthentificationError('Refreshing tokens failed: Server requests new authorization')
-        elif tokenResponse.status_code in (requests.codes['internal_server_error'], requests.codes['service_unavailable'], requests.codes['gateway_timeout']):
-            raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: {tokenResponse.status_code}')
-        elif tokenResponse.status_code == requests.codes['ok']:
-            LOG.info("Refresh is successful!")
-            self.revoke_token(self.token['refresh_token'], client)
-            LOG.info("Revoke old token successful!")
-            token_data = self.parseFromBody(tokenResponse.text)
+            LOG.info('Firing post request for refresh!')
+            tokenResponse = self.post(
+                token_url,
+                data=body,
+                auth=auth,
+                timeout=timeout,
+                headers=headers
+            )
+            LOG.info("TokenResponse from refresh is %s", tokenResponse.status_code)
+            if tokenResponse.status_code == requests.codes['unauthorized']:
+                raise AuthentificationError('Refreshing tokens failed: Server requests new authorization')
+            elif tokenResponse.status_code in (requests.codes['internal_server_error'], requests.codes['service_unavailable'], requests.codes['gateway_timeout']):
+                raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: {tokenResponse.status_code}')
+            elif tokenResponse.status_code == requests.codes['ok']:
+                LOG.info("Refresh is successful!")
+                self.revoke_token(self.token['refresh_token'], client)
+                LOG.info("Revoke old token successful!")
+                token_data = self.parseFromBody(tokenResponse.text)
 
-            self._session_tokens[client]['token_raw'] = token_data
-            self.token['client'] = client
-            if "refresh_token" not in self.token:
-                LOG.info("No new refresh token given. Re-using old.")
-                self.token["refresh_token"] = refresh_token
-            return self.token
-        else:
-            raise RetrievalError(f'Status Code from MySkoda while refreshing tokens was: {tokenResponse.status_code}')
+                self._session_tokens[client]['token_raw'] = token_data
+                self.token['client'] = client
+                if "refresh_token" not in self.token:
+                    LOG.info("No new refresh token given. Re-using old.")
+                    self.token["refresh_token"] = refresh_token
+                return self.token
+            else:
+                raise RetrievalError(f'Status Code from MySkoda while refreshing tokens was: {tokenResponse.status_code}')
+        except RemoteDisconnected as exp: 
+            LOG.info("EXCEPTION RemoteDisconnected!!! try again:")
+            self.refreshTokens(client)
+
 
     def request(
         self,

@@ -378,7 +378,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             try:
                 statusResponse: requests.Response = self.session.get(url, allow_redirects=False)
                 self.recordElapsed(statusResponse.elapsed)
-                LOG.info("fetched response code: %s", statusResponse.status_code)
+                #LOG.info("fetched response code: %s", statusResponse.status_code)
                 if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
                     data = statusResponse.json()
                     if self.cache is not None:

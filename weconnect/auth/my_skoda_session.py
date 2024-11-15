@@ -89,11 +89,11 @@ class MySkodaSession(VWWebSession):
             self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
             self.scope= 'openid mbb profile'
         authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')
-        LOG.info('starting webAuth')
+        #LOG.info('starting webAuth')
         response = self.doWebAuth(authorizationUrl)
-        LOG.info('starting fetchTokens with client %s', client)
-        LOG.info('Client_id is: %s', self.client_id)
-        LOG.info('Scope is: %s', self.scope)
+        #LOG.info('starting fetchTokens with client %s', client)
+        #LOG.info('Client_id is: %s', self.client_id)
+        #LOG.info('Scope is: %s', self.scope)
 
         token_data = self.fetchTokens(client,
                          authorization_response=response
@@ -111,8 +111,8 @@ class MySkodaSession(VWWebSession):
                 raise TemporaryAuthentificationError(f'{error} - {error_description}')
             else:
                 raise TemporaryAuthentificationError(error)
-        for key in self._session_tokens.get(client, {}):
-            LOG.info(f'Got {key} for client {client}, token: "{self._session_tokens.get(client, {}).get(key, None)}"')
+        #for key in self._session_tokens.get(client, {}):
+            #LOG.info(f'Got {key} for client {client}, token: "{self._session_tokens.get(client, {}).get(key, None)}"')
         if client != 'connect':
             self.login(client='connect')
 

@@ -18,6 +18,12 @@ from requests import exceptions, codes
 
 import requests
 
+from myskoda.models.driving_range import DrivingRange
+from myskoda.models.status import Status
+from myskoda.models.position import Positions
+from myskoda.models.health import Health
+from myskoda.models.charging import Charging
+
 from weconnect.addressable import AddressableObject, AddressableAttribute, AddressableDict, AddressableList
 if TYPE_CHECKING:
     from weconnect.weconnect import WeConnect
@@ -136,8 +142,36 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         if enableTracker:
             self.requestTracker = RequestTracker(self)
 
-        self.update(fromDict, updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective)
 
+
+    @classmethod
+    async def create(
+            cls,
+            weConnect: WeConnect,
+            vin: str,
+            parent: AddressableDict[str, Vehicle],
+            fromDict: Dict[str, Any],
+            fixAPI: bool = True,
+            updateCapabilities: bool = True,
+            updatePictures: bool = True,
+            selective: Optional[list[Domain]] = None,
+            enableTracker: bool = False
+        ) -> Vehicle:
+            """Asynchronous factory method to create a Vehicle instance."""
+            instance = cls(
+                weConnect=weConnect,
+                vin=vin,
+                parent=parent,
+                fromDict=fromDict,
+                fixAPI=fixAPI,
+                updateCapabilities=updateCapabilities,
+                updatePictures=updatePictures,
+                selective=selective,
+                enableTracker=enableTracker
+            )
+            await instance.update(fromDict, updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective)
+            return instance
+    
     def enableTracker(self) -> None:
         if self.requestTracker is None:
             self.requestTracker = RequestTracker(self)
@@ -151,7 +185,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             return True
         return False
 
-    def update(  # noqa: C901  # pylint: disable=too-many-branches
+    async def update(  # noqa: C901  # pylint: disable=too-many-branches
         self,
         fromDict: Dict[str, Any] = None,
         updateCapabilities: bool = True,
@@ -163,13 +197,13 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             #LOG.info('Create /update vehicle')
 
             self.vin.fromDict(fromDict, 'vin')
-            self.role.fromDict(fromDict, 'role')
-            self.enrollmentStatus.fromDict(fromDict, 'enrollmentStatus')
-            self.userRoleStatus.fromDict(fromDict, 'userRoleStatus')
+            self.role = "dummyRole"
+            self.enrollmentStatus = 'dummyEnrolled'
+            self.userRoleStatus = 'userRoleStatus'
             self.model.fromDict(fromDict['specification'], 'model')
             self.devicePlatform.fromDict(fromDict, 'devicePlatform')
             self.nickname.fromDict(fromDict['specification'], 'title')
-            self.brandCode.fromDict(fromDict, 'brandCode')
+            self.brandCode = 'dummyBrandCode'
 
             if updateCapabilities and 'capabilities' in fromDict and fromDict['capabilities'] is not None:
                 for capDict in fromDict['capabilities']['capabilities']:
@@ -230,7 +264,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                                               'coUsers']}.items():
                 LOG.debug('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
-        self.updateStatus(updateCapabilities=updateCapabilities, force=force, selective=selective)
+        await self.updateStatus(updateCapabilities=updateCapabilities, force=force, selective=selective)
         if SUPPORT_IMAGES and updatePictures:
             for badge in Vehicle.Badge:
                 badgeImg: Image = Image.open(f'{os.path.dirname(__file__)}/../badges/{badge.value}.png')
@@ -239,7 +273,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
 
             self.updatePictures()
 
-    def updateStatus(self, updateCapabilities: bool = True, force: bool = False,  # noqa: C901 # pylint: disable=too-many-branches
+    async def updateStatus(self, updateCapabilities: bool = True, force: bool = False,  # noqa: C901 # pylint: disable=too-many-branches
                      selective: Optional[list[Domain]] = None):
         jobKeyClassMap: Dict[Domain, Dict[str, Type[GenericStatus]]] = {
             Domain.ACCESS: {
@@ -340,17 +374,18 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         else:
             jobs = [domain.value for domain in selective]
         with self.lock:
-            url: str = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
+            #url: str = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
             if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.PARKING])) \
                     and (not updateCapabilities or ('PARKING_POSITION' in self.capabilities and self.capabilities['PARKING_POSITION'].status.value is None)):
-                url = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
-                self.weConnect.session.setToken(client='technical')
+                #url = 'https://api.connect.skoda-auto.cz/api/v1/position/vehicles/' + self.vin.value + '/parking-position'
+                #self.weConnect.session.setToken(client='technical')
                 #LOG.info("update parking-position and token %s", self.weConnect.session.token['client'])
-                data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
-                                                                                                                 codes['no_content'],
-                                                                                                                 codes['bad_gateway'],
-                                                                                                                 codes['forbidden']])
-                if data is not None:
+                #data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
+                #                                                                                                codes['no_content'],
+                #                                                                                                 codes['bad_gateway'],
+                #                                                                                                 codes['forbidden']])
+                positions: Positions = await self.weConnect.session.get_positions(self.vin.value)
+                if positions is not None:
                     if 'parking' not in self.domains:
                         self.domains['parking'] = DomainDict(localAddress='parking', parent=self)
                     if 'parkingPosition' in self.domains['parking']:
@@ -359,7 +394,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         self.domains['parking']['parkingPosition'] = ParkingPosition(vehicle=self,
                                                                                      parent=self.domains['parking'],
                                                                                      statusId='parkingPosition',
-                                                                                     fromDict=data)
+                                                                                     fromDict=positions.to_dict())
                 else:
                     if self.statusExists('parking', 'parkingPosition'):
                         parkingPosition: ParkingPosition = cast(ParkingPosition, self.domains['parking']['parkingPosition'])
@@ -369,26 +404,19 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         parkingPosition.carCapturedTimestamp.enabled = False
                         parkingPosition.enabled = False
 
-            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
-            self.weConnect.session.setToken(client='connect')
+#            url: str = 'https://api.connect.skoda-auto.cz/api/v2/vehicle-status/' + self.vin.value
+ #           self.weConnect.session.setToken(client='connect')
             #LOG.info("update vehicle-status and token %s", self.weConnect.session.token['client'])
-            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
-            if len(data) == 0:
-                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
-            if data is not None:
-                data['measurements'] = data['remote']
-                if data['measurements']['mileageInKm']:
-                    data['measurements']['odometerStatus'] = data['measurements']['mileageInKm']
-                carCapturedTimestamp = data['measurements']['capturedAt']
+#            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
+            health: Health = await self.weConnect.session.get_health(self.vin.value)
+            print(f"Mileage: {health.mileage_in_km}km")
+
+            data: Optional[Dict[str, Any]] = {}  # Initialize as an empty dictionary
+            if health is not None:
+                data['measurements'] = {}  # Ensure 'measurements' is a dictionary
+                data['measurements']['odometerStatus'] = health.mileage_in_km
+                carCapturedTimestamp = health.to_dict()['timestamp']
                 data['measurements']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
-                del data['measurements']['mileageInKm']
-                del data['remote']
-                del data['measurements']['status']
-                del data['measurements']['doors']
-                del data['measurements']['windows']
-                del data['measurements']['lights']
-                del data['errors']
-                del data['local']
 
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
@@ -417,44 +445,50 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 for key, value in {key: value for key, value in data.items() if key not in list([domain.value for domain in jobKeyClassMap.keys()])}.items():
                     LOG.debug('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
-            url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
-            self.weConnect.session.setToken(client='connect')
+            #url: str = 'https://api.connect.skoda-auto.cz/api/v1/charging/' + self.vin.value + '/status'
+            #self.weConnect.session.setToken(client='connect')
             #LOG.info("update charging and token %s", self.weConnect.session.token['client'])
-            data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
-            if len(data) == 0:
-                LOG.warning('%s: Vehicle data for %s is empty, this can happen when there are too many requests', self.getGlobalAddress(), self.vin.value)
-            if data is not None:
-                data['charging']['plugStatus'] = data['plug']
-                data['charging']['plugStatus']['plugConnectionState'] = data['charging']['plugStatus']['connectionState']
-                data['charging']['plugStatus']['plugLockState'] = data['charging']['plugStatus']['lockState']
-
-                data['charging']['batteryStatus'] = data['battery']
-                data['charging']['batteryStatus']['currentSOC_pct'] = data['charging']['batteryStatus']['stateOfChargeInPercent']
-                data['charging']['batteryStatus']['cruisingRangeElectric_km'] = data['charging']['batteryStatus']['cruisingRangeElectricInMeters']
+            #data: Optional[Dict[str, Any]] = self.weConnect.fetchData(url, force)
+            charging: Charging = await self.weConnect.session.get_charging(self.vin.value)
+            if charging is not None:
+                data['charging'] = {}
+                #data['charging']['plugStatus'] = charging.plug
+                carCapturedTimestamp = charging.to_dict()['car_captured_timestamp']
                 data['charging']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
+                data['charging']['baterryStatus'] = {}
+                data['charging']['baterryStatus']['currentSOC_pct'] = charging.status.battery.state_of_charge_in_percent
+                data['charging']['baterryStatus']['cruisingRangeElectric_km'] = charging.status.battery.remaining_cruising_range_in_meters
 
-                data['charging']['chargingStatus'] = data['charging']
-                data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = data['charging']['chargingStatus']['remainingToCompleteInSeconds']
-                data['charging']['chargingStatus']['chargingState'] = data['charging']['chargingStatus']['state']
-                data['charging']['chargingStatus']['chargePower_kW'] = data['charging']['chargingStatus']['chargingPowerInWatts']
-                data['charging']['chargingStatus']['chargeRate_kmph'] = data['charging']['chargingStatus']['chargingRateInKilometersPerHour']             
-                data['charging']['chargingStatus']['chargeType'] = data['charging']['chargingStatus']['chargingType']
-
-
-                currentStateOfCharge = data['charging']['batteryStatus']['currentSOC_pct']
-                cruisingRangeElectric_km = data['charging']['batteryStatus']['cruisingRangeElectric_km']
+                data['charging']['chargingStatus'] = {}
+                data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = charging.status.remaining_time_to_fully_charged_in_minutes
+                #data['charging']['chargingStatus']['chargingState'] = charging.status.state
+                data['charging']['chargingStatus']['chargePower_kW'] = charging.status.charge_power_in_kw
+                data['charging']['chargingStatus']['chargeRate_kmph'] = charging.status.charging_rate_in_kilometers_per_hour
+                data['charging']['chargingStatus']['chargeType'] = charging.status.charge_type
+                
+                currentStateOfCharge = charging.status.battery.state_of_charge_in_percent#data['charging']['batteryStatus']['currentSOC_pct']
+                cruisingRangeElectric_km = charging.status.battery.remaining_cruising_range_in_meters
 
                 data['measurements'] = {"fuelLevelStatus" : {"carType": 'electric', "primaryEngineType": "electric", "currentSOC_pct": currentStateOfCharge}, "value": {"carCapturedTimestamp": carCapturedTimestamp}}
                 data['fuelStatus'] = {"rangeStatus": {"carType": 'electric', "primaryEngine": {"type": "electric"}, "totalRange_km": int(cruisingRangeElectric_km/1000)}, "value": {"carCapturedTimestamp": carCapturedTimestamp}}
 
-                del data['plug']
-                del data['charging']['state']
-                del data['charging']['remainingToCompleteInSeconds']
-                del data['charging']['chargingPowerInWatts']
-                del data['charging']['chargingRateInKilometersPerHour']
-                del data['charging']['chargingType']
-                del data['charging']['chargeMode']
-                del data['charging']['chargingSettings']
+           
+               # data['charging']['plugStatus'] = data['plug']
+               # data['charging']['plugStatus']['plugConnectionState'] = data['charging']['plugStatus']['connectionState']
+                #data['charging']['plugStatus']['plugLockState'] = data['charging']['plugStatus']['lockState']
+
+                #data['charging']['batteryStatus'] = data['battery']
+                #data['charging']['batteryStatus']['currentSOC_pct'] = data['charging']['batteryStatus']['stateOfChargeInPercent']
+                #data['charging']['batteryStatus']['cruisingRangeElectric_km'] = data['charging']['batteryStatus']['cruisingRangeElectricInMeters']
+                #data['charging']['value'] = {"carCapturedTimestamp": carCapturedTimestamp}
+
+                
+               # data['charging']['chargingStatus']['remainingChargingTimeToComplete_min'] = data['charging']['chargingStatus']['remainingToCompleteInSeconds']
+               # data['charging']['chargingStatus']['chargingState'] = data['charging']['chargingStatus']['state']
+               # data['charging']['chargingStatus']['chargePower_kW'] = data['charging']['chargingStatus']['chargingPowerInWatts']
+               # data['charging']['chargingStatus']['chargeRate_kmph'] = data['charging']['chargingStatus']['chargingRateInKilometersPerHour']             
+               # data['charging']['chargingStatus']['chargeType'] = data['charging']['chargingStatus']['chargingType']
+
 
                 for domain, keyClassMap in jobKeyClassMap.items():
                     if not updateCapabilities and domain == Domain.USER_CAPABILITIES:
@@ -794,21 +828,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
             returnString += f'Device Platform:   {self.devicePlatform.value.value}\n'
         if self.nickname.enabled and self.nickname.value is not None:
             returnString += f'Nickname:          {self.nickname.value}\n'
-        if self.brandCode.enabled and self.brandCode.value is not None:
-            returnString += f'Brand Code:        {self.brandCode.value.value}\n'
-        if self.role.enabled and self.role.value is not None:
-            returnString += f'Role:              {self.role.value.value}\n'  # pylint: disable=no-member
-        if self.enrollmentStatus.enabled and self.enrollmentStatus.value is not None:
-            returnString += f'Enrollment Status: {self.enrollmentStatus.value.value}\n'  # pylint: disable=no-member
-        if self.userRoleStatus.enabled and self.userRoleStatus.value is not None:
-            returnString += f'User Role Status:  {self.userRoleStatus.value.value}\n'  # pylint: disable=no-member
-        if self.coUsers.enabled:
-            returnString += f'Co-Users: {len(self.coUsers)} items\n'
-            for coUser in self.coUsers:
-                if coUser.enabled:
-                    returnString += ''.join(['\t' + line for line in str(coUser).splitlines(True)]) + '\n'
-        if self.tags.enabled and self.tags.value:
-            returnString += 'Tags:               ' + ', '.join(self.tags.value) + '\n'
+        
         if self.capabilities.enabled:
             returnString += f'Capabilities: {len(self.capabilities)} items\n'
             for capability in self.capabilities.values():

@@ -12,6 +12,9 @@ from weconnect.auth.we_charge_session import WeChargeSession
 from weconnect.auth.my_cupra_session import MyCupraSession
 from weconnect.auth.my_skoda_session import MySkodaSession
 
+from aiohttp import ClientSession
+from myskoda import MySkoda
+
 LOG = logging.getLogger("weconnect")
 
 
@@ -76,7 +79,8 @@ class SessionManager():
         elif service == Service.MY_CUPRA:
             session = MyCupraSession(sessionuser=sessionuser, token=token, metadata=metadata)
         elif service == Service.MY_SKODA:
-            session = MySkodaSession(sessionuser=sessionuser, token=token, metadata=metadata)
+            clientSession = ClientSession()
+            session = MySkoda(clientSession)
         self.sessions[(service, sessionuser)] = session
         return session
 

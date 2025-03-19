@@ -9,6 +9,7 @@ import logging
 import json
 from datetime import datetime, timedelta
 
+from myskoda.models.driving_range import DrivingRange
 import requests
 
 from weconnect.auth.session_manager import SessionManager, Service, SessionUser
@@ -105,11 +106,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
 
         self.__manager = SessionManager(tokenstorefile=tokenfile)
         self.__session = self.__manager.getSession(Service.MY_SKODA, SessionUser(username=username, password=password))
-        self.__session.proxies.update(self.proxystring)
-        self.__session.timeout = timeout
-        self.__session.retries = numRetries
-        self.__session.forceReloginAfter = forceReloginAfter
-
+       
         if loginOnInit:
             self.__session.login()
             LOG.info('end of login() with skoda connect')
@@ -184,54 +181,54 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     def login(self) -> None:
         self.__session.login()
 
+    async def connect(self, username: str,
+        password: str) -> None:
+        await self.__session.connect(username, password)
+
     @property
     def vehicles(self) -> AddressableDict[str, Vehicle]:
         return self.__vehicles
 
-    def update(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,
+    async def update(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,
                selective: Optional[list[Domain]] = None) -> None:
         self.__elapsed.clear()
         try:
             LOG.info('staring updateVehicles')
-            self.updateVehicles(updateCapabilities=updateCapabilities, updatePictures=updatePictures, force=force, selective=selective)
+            await self.updateVehicles(updateCapabilities=updateCapabilities, updatePictures=updatePictures, force=force, selective=selective)
             self.updateChargingStations(force=force)
         finally:
             self.updateComplete()
-            self.__session.cookies.clear()  # Clear cookies to have a fresh session afterwards
+            #self.__session.cookies.clear()  # Clear cookies to have a fresh session afterwards
 
-    def updateVehicles(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,  # noqa: C901
+    async def updateVehicles(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,  # noqa: C901
                        selective: Optional[list[Domain]] = None) -> None:
         with self.lock:
             catchedRetrievalError = None
-            url = 'https://api.connect.skoda-auto.cz/api/v3/garage'
-            self.session.setToken('technical')
-            LOG.info("updating garage and token %s", self.session.token['client'])
-            data = self.fetchData(url, force)
-            if data is not None:
-                if 'vehicles' in data and data['vehicles']:
-                    vins: List[str] = []
-                    for vehicleDict in data['vehicles']:
-                        if 'vin' not in vehicleDict:
-                            break
-                        vin: str = vehicleDict['vin']
-                        vins.append(vin)
-                        try:
-                            if vin not in self.__vehicles:
-                                vehicle = Vehicle(weConnect=self, vin=vin, parent=self.__vehicles, fromDict=vehicleDict, fixAPI=self.fixAPI,
-                                                  updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective,
-                                                  enableTracker=self.__enableTracker)
-                                self.__vehicles[vin] = vehicle
-                            else:
-                                self.__vehicles[vin].update(fromDict=vehicleDict, updateCapabilities=updateCapabilities, updatePictures=updatePictures,
-                                                            selective=selective)
-                        except RetrievalError as retrievalError:
-                            catchedRetrievalError = retrievalError
-                            LOG.info('Failed to retrieve data for VIN %s: %s', vin, retrievalError)
-                    # delete those vins that are not anymore available
-                    for vin in [vin for vin in self.__vehicles if vin not in vins]:
-                        del self.__vehicles[vin]
+            
+            vins: List[str] = []
 
-                    self.__cache[url] = (data, str(datetime.utcnow()))
+            for vin in await self.session.list_vehicle_vins():
+                vins.append(vin)
+                vehicleDict = await self.session.get_info(vin)
+                try:
+                    if vin not in self.__vehicles:
+                        vehicle = await Vehicle.create(weConnect=self, vin=vin, parent=self.__vehicles, fromDict=vehicleDict.to_dict(), fixAPI=self.fixAPI,
+                                            updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective,
+                                            enableTracker=self.__enableTracker)
+                        self.__vehicles[vin] = vehicle
+                        #self.setChargingStationSearchParameters(vehicle.domains['parking']['parkingPosition'].latitude.value, vehicle.domains['parking']['parkingPosition'].longitude.value, 100)
+                        
+                    else:
+                        await self.__vehicles[vin].update(fromDict=vehicleDict, updateCapabilities=updateCapabilities, updatePictures=updatePictures,
+                                                    selective=selective)
+                except RetrievalError as retrievalError:
+                    catchedRetrievalError = retrievalError
+                    LOG.info('Failed to retrieve data for VIN %s: %s', vin, retrievalError)
+            # delete those vins that are not anymore available
+            for vin in [vin for vin in self.__vehicles if vin not in vins]:
+                del self.__vehicles[vin]
+
+            #self.__cache[url] = (data, str(datetime.utcnow()))
             if catchedRetrievalError:
                 raise catchedRetrievalError
 
@@ -272,7 +269,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
 
     def updateChargingStations(self, force: bool = False) -> None:  # noqa: C901 # pylint: disable=too-many-branches
         if self.latitude is not None and self.longitude is not None:
-            url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={self.latitude}&longitude={self.longitude}'
+            url: str = f'https://prod.emea.mobile.charging.cariad.digital/poi/charging-stations/v2?latitude={self.latitude}&longitude={self.longitude}'
             if self.market is not None:
                 url += f'&market={self.market}'
             if self.useLocale is not None:
@@ -282,6 +279,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             if self.session.userId is not None:
                 url += f'&userId={self.session.userId}'
             LOG.info("update charging stations and token %s", self.session.token['client'])
+            self.session.setToken('technical')
             data = self.fetchData(url, force)
             if data is not None:
                 if 'chargingStations' in data and data['chargingStations']:

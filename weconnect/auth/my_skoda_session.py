@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from http.client import RemoteDisconnected
 from typing import Dict, Optional, Match
-import jwt
 
 import re
 import json

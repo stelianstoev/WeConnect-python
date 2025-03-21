@@ -70,7 +70,7 @@ class SessionManager():
                 metadata = self.tokenstore[hash]['metadata']
 
         if service == Service.WE_CONNECT:
-            session = WeConnectSession(sessionuser=sessionuser, token=token, metadata=metadata)
+            session = WeConnectSession(session_user=sessionuser, token=token, metadata=metadata, cache={})
         elif service == Service.WE_CHARGE:
             session = WeChargeSession(sessionuser=sessionuser, token=token, metadata=metadata)
         elif service == Service.MY_CUPRA:

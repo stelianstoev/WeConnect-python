@@ -68,7 +68,7 @@ class SessionManager():
                 metadata = self.tokenstore[hash]['metadata']
 
         if service == Service.WE_CONNECT:
-            session = WeConnectSession(session_user=sessionuser, token=token, metadata=metadata)
+            session = WeConnectSession(sessionuser=sessionuser, token=token, metadata=metadata)
         elif service == Service.MY_SKODA:
             session = MySkodaSession(session_user=sessionuser, token=token, metadata=metadata, cache={})
         self.sessions[(service, sessionuser)] = session

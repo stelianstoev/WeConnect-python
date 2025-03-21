@@ -9,7 +9,7 @@ from oauthlib.oauth2 import InsecureTransportError
 from oauthlib.oauth2 import is_secure_transport
 
 from requests.models import CaseInsensitiveDict
-from weconnect.auth.openid_session import AccessType
+from weconnect.auth.openid_sessionVW import AccessType
 
 from weconnect.auth.vw_web_session import VWWebSession
 from weconnect.errors import AuthentificationError, RetrievalError, TemporaryAuthentificationError
@@ -25,7 +25,7 @@ class WeConnectSession(VWWebSession):
                                                scope='openid profile badge cars dealers vin',
                                                redirect_uri='weconnect://authenticated',
                                                state=None,
-                                               session_user=sessionuser,
+                                               sessionuser=sessionuser,
                                                **kwargs)
 
         self.headers = CaseInsensitiveDict({

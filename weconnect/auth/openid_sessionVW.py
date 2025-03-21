@@ -11,7 +11,7 @@ from oauthlib.oauth2.rfc6749.parameters import parse_authorization_code_response
 
 from requests.adapters import HTTPAdapter
 
-from weconnect.auth.auth_util import addBearerAuthHeader
+from weconnect.auth.auth_util import add_bearer_auth_header
 from weconnect.errors import AuthentificationError, RetrievalError
 
 from weconnect.elements.helpers.blacklist_retry import BlacklistRetry
@@ -242,6 +242,6 @@ class OpenIDSessionVW(requests.Session):
                     raise TokenExpiredError()
                 token = self.accessToken
 
-        headers = addBearerAuthHeader(token, headers)
+        headers = add_bearer_auth_header(token, headers)
 
         return (uri, headers, body)

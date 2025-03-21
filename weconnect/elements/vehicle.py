@@ -227,7 +227,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                                               'coUsers']}.items():
                 LOG.warning('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
-        #self.updateStatus(updateCapabilities=updateCapabilities, force=force, selective=selective)
+        self.updateStatus(updateCapabilities=updateCapabilities, force=force, selective=selective)
         if SUPPORT_IMAGES and updatePictures:
             for badge in Vehicle.Badge:
                 badgeImg: Image = Image.open(f'{os.path.dirname(__file__)}/../badges/{badge.value}.png')
@@ -487,9 +487,9 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         self.__carImages[image['viewType']] = img
                         if image['viewType'] == 'UNMODIFIED_EXTERIOR_FRONT':
                             if 'car' in self.pictures:
-                                self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
+                                self.pictures['car'].setValueWithCarTime(self.__carImages['UNMODIFIED_EXTERIOR_FRONT'], lastUpdateFromCar=None, fromServer=True)
                             else:
-                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['car_34view'],
+                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['UNMODIFIED_EXTERIOR_FRONT'],
                                                                             valueType=Image.Image)
 
                 self.updateStatusPicture()

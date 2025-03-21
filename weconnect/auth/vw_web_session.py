@@ -16,13 +16,13 @@ from requests.models import CaseInsensitiveDict
 from carconnectivity.errors import APICompatibilityError, AuthenticationError, RetrievalError
 
 from weconnect.auth.auth_util import CredentialsFormParser, HTMLFormParser, TermsAndConditionsFormParser
-from weconnect.auth.openid_session import OpenIDSession
+from weconnect.auth.openid_sessionVW import OpenIDSessionVW
 
 if TYPE_CHECKING:
     from typing import Any, Dict
 
 
-class VWWebSession(OpenIDSession):
+class VWWebSession(OpenIDSessionVW):
     """
     VWWebSession handles the web authentication process for Volkswagen's web services.
     """

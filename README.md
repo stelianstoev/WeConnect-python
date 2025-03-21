@@ -56,4 +56,4 @@ In an effort to try to make WeConnect-python also to work with latest generation
 
 ## To run manually:
 
-apt-get update && apt-get install nano git -y && cd /opt/venv/lib/python3.12/site-packages/weconnect && git clone https://github.com/stelianstoev/CarConnectivity-connector-skoda.git && cp -R CarConnectivity-connector-skoda/src/carconnectivity_connectors/skoda/auth/* auth/ && git clone https://github.com/stelianstoev/WeConnect-python.git && cp -R WeConnect-python/weconnect/auth/* auth/ && cp WeConnect-python/weconnect/weconnect.py . && pip install carconnectivity jwt==1.3.1
+apt-get update && apt-get install nano git -y && cd /opt/venv/lib/python3.12/site-packages/weconnect &&  git clone https://github.com/stelianstoev/CarConnectivity-connector-skoda.git && cp -R CarConnectivity-connector-skoda/src/carconnectivity_connectors/skoda/auth/* auth/ && git clone https://github.com/stelianstoev/WeConnect-python.git && cp -R WeConnect-python/weconnect/auth/* auth/ && cp WeConnect-python/weconnect/weconnect.py . && cp WeConnect-python/weconnect/elements/vehicle.py elements/ && pip install carconnectivity jwt==1.3.1

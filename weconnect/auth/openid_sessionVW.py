@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 from enum import Enum, auto
 import time
-from datetime import datetime, timezone
 import logging
 import requests
 from jwt import JWT
+from datetime import datetime, timezone
 
 from oauthlib.common import UNICODE_ASCII_CHARACTER_SET, generate_nonce, generate_token
 from oauthlib.oauth2.rfc6749.parameters import parse_authorization_code_response, parse_token_response, prepare_grant_uri
@@ -47,13 +47,14 @@ class OpenIDSession(requests.Session):
     """
     OpenIDSession is a subclass of requests.Session that handles OpenID Connect authentication.
     """
-    def __init__(self, client_id=None, redirect_uri=None, refresh_url=None, scope=None, token=None, metadata=None, timeout=None,
+    def __init__(self, client_id=None, redirect_uri=None, refresh_url=None, scope=None, token=None, metadata=None, state=None, timeout=None,
                  force_relogin_after=None, **kwargs) -> None:
         super(OpenIDSession, self).__init__(**kwargs)
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.refresh_url = refresh_url
         self.scope = scope
+        self.state: str = state or generate_token(length=30, chars=UNICODE_ASCII_CHARACTER_SET)
 
         self.timeout = timeout
         self._token = token
@@ -112,10 +113,6 @@ class OpenIDSession(requests.Session):
         if new_retries_value:
             # Retry on internal server error (500)
             retries = BlacklistRetry(total=new_retries_value,
-                                     connect=new_retries_value,
-                                     read=new_retries_value,
-                                     status=new_retries_value,
-                                     other=new_retries_value,
                                      backoff_factor=0.1,
                                      status_forcelist=[500],
                                      status_blacklist=[429],
@@ -306,38 +303,43 @@ class OpenIDSession(requests.Session):
         Currently, it is not implemented and does not perform any actions.
         """
 
-    def authorization_url(self, url, **kwargs):
+    def authorization_url(self, url, state=None, **kwargs):
         """
         Generates the authorization URL for the OpenID Connect flow.
 
         Args:
             url (str): The base URL for the authorization endpoint.
+            state (str, optional): An optional state parameter to maintain state between the request and callback. Defaults to None.
             **kwargs: Additional parameters to include in the authorization URL.
 
         Returns:
             str: The complete authorization URL with the necessary query parameters.
         """
-        auth_url = prepare_grant_uri(uri=url, client_id=self.client_id, redirect_uri=self.redirect_uri, response_type='code id_token', scope=self.scope,
-                                     nonce=generate_nonce(), **kwargs)
+        state = state or self.state
+        auth_url = prepare_grant_uri(uri=url, client_id=self.client_id, redirect_uri=self.redirect_uri, response_type='code id_token token', scope=self.scope,
+                                     state=state, nonce=generate_nonce(), **kwargs)
         return auth_url
 
-    def parse_from_fragment(self, authorization_response):
+    def parse_from_fragment(self, authorization_response, state=None):
         """
         Parses the authorization response fragment and extracts the token.
 
         Args:
             authorization_response (str): The authorization response fragment containing the token.
+            state (str, optional): The state parameter to validate the response. Defaults to None.
 
         Returns:
             dict: The parsed token information.
         """
-        self.token = parse_authorization_code_response(authorization_response)
+        state = state or self.state
+        self.token = parse_authorization_code_response(authorization_response, state=state)
         return self.token
 
-    def parse_from_body(self, token_response):
+    def parse_from_body(self, token_response, state=None):
         """
             Parse the JSON token response body into a dict.
         """
+        del state
         self.token = parse_token_response(token_response, scope=self.scope)
         return self.token
 
@@ -345,20 +347,9 @@ class OpenIDSession(requests.Session):
         self,
         method,
         url,
-        params=None,
         data=None,
         headers=None,
-        cookies=None,
-        files=None,
-        auth=None,
         timeout=None,
-        allow_redirects=True,
-        proxies=None,
-        hooks=None,
-        stream=None,
-        verify=None,
-        cert=None,
-        json=None,
         withhold_token=False,
         access_type=AccessType.ACCESS,
         token=None,

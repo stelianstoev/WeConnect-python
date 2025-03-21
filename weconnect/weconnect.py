@@ -9,7 +9,6 @@ import logging
 import json
 from datetime import datetime, timedelta
 
-from myskoda.models.driving_range import DrivingRange
 import requests
 
 from weconnect.auth.session_manager import SessionManager, Service, SessionUser
@@ -45,7 +44,8 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         numRetries: int = 3,
         timeout: bool = None,
         selective: Optional[list[Domain]] = None,
-        forceReloginAfter: Optional[int] = None
+        forceReloginAfter: Optional[int] = None,
+        acceptTermsOnLogin: Optional[bool] = False,
     ) -> None:
         """Initialize WeConnect interface. If loginOnInit is true the user will be tried to login.
            If loginOnInit is true also an initial fetch of data is performed.
@@ -105,11 +105,17 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         self.tokenfile = tokenfile
 
         self.__manager = SessionManager(tokenstorefile=tokenfile)
-        self.__session = self.__manager.getSession(Service.MY_SKODA, SessionUser(username=username, password=password))
-       
+        self.__session = self.__manager.getSession(Service.WE_CONNECT, SessionUser(username=username, password=password))
+        self.__session.proxies.update(self.proxystring)
+        self.__session.timeout = timeout
+        self.__session.retries = numRetries
+        self.__session.forceReloginAfter = forceReloginAfter
+        self.__session.acceptTermsOnLogin = acceptTermsOnLogin
+        self.__VWsession = self.__manager.getSession(Service.WE_CONNECT, SessionUser(username=username, password=password))
+        self.__VWsession.login()
+
         if loginOnInit:
             self.__session.login()
-            LOG.info('end of login() with skoda connect')
 
         if updateAfterLogin:
             self.update(updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective)
@@ -124,6 +130,10 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     @property
     def session(self) -> requests.Session:
         return self.__session
+    
+    @property
+    def VWsession(self) -> requests.Session:
+        return self.__VWsession
 
     @property
     def cache(self) -> Dict[str, Any]:
@@ -181,54 +191,54 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     def login(self) -> None:
         self.__session.login()
 
-    async def connect(self, username: str,
-        password: str) -> None:
-        await self.__session.connect(username, password)
+    def vwLogin(self) -> None:
+        self.__VWsession.login()
 
     @property
     def vehicles(self) -> AddressableDict[str, Vehicle]:
         return self.__vehicles
 
-    async def update(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,
+    def update(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,
                selective: Optional[list[Domain]] = None) -> None:
         self.__elapsed.clear()
         try:
-            LOG.info('staring updateVehicles')
-            await self.updateVehicles(updateCapabilities=updateCapabilities, updatePictures=updatePictures, force=force, selective=selective)
+            self.updateVehicles(updateCapabilities=updateCapabilities, updatePictures=updatePictures, force=force, selective=selective)
             self.updateChargingStations(force=force)
         finally:
             self.updateComplete()
-            #self.__session.cookies.clear()  # Clear cookies to have a fresh session afterwards
+            self.__session.cookies.clear()  # Clear cookies to have a fresh session afterwards
 
-    async def updateVehicles(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,  # noqa: C901
+    def updateVehicles(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,  # noqa: C901
                        selective: Optional[list[Domain]] = None) -> None:
         with self.lock:
             catchedRetrievalError = None
-            
-            vins: List[str] = []
+            url = 'https://emea.bff.cariad.digital/vehicle/v1/vehicles'
+            data = self.fetchData(url, force)
+            if data is not None:
+                if 'data' in data and data['data']:
+                    vins: List[str] = []
+                    for vehicleDict in data['data']:
+                        if 'vin' not in vehicleDict:
+                            break
+                        vin: str = vehicleDict['vin']
+                        vins.append(vin)
+                        try:
+                            if vin not in self.__vehicles:
+                                vehicle = Vehicle(weConnect=self, vin=vin, parent=self.__vehicles, fromDict=vehicleDict, fixAPI=self.fixAPI,
+                                                  updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective,
+                                                  enableTracker=self.__enableTracker)
+                                self.__vehicles[vin] = vehicle
+                            else:
+                                self.__vehicles[vin].update(fromDict=vehicleDict, updateCapabilities=updateCapabilities, updatePictures=updatePictures,
+                                                            selective=selective)
+                        except RetrievalError as retrievalError:
+                            catchedRetrievalError = retrievalError
+                            LOG.error('Failed to retrieve data for VIN %s: %s', vin, retrievalError)
+                    # delete those vins that are not anymore available
+                    for vin in [vin for vin in self.__vehicles if vin not in vins]:
+                        del self.__vehicles[vin]
 
-            for vin in await self.session.list_vehicle_vins():
-                vins.append(vin)
-                vehicleDict = await self.session.get_info(vin)
-                try:
-                    if vin not in self.__vehicles:
-                        vehicle = await Vehicle.create(weConnect=self, vin=vin, parent=self.__vehicles, fromDict=vehicleDict.to_dict(), fixAPI=self.fixAPI,
-                                            updateCapabilities=updateCapabilities, updatePictures=updatePictures, selective=selective,
-                                            enableTracker=self.__enableTracker)
-                        self.__vehicles[vin] = vehicle
-                        #self.setChargingStationSearchParameters(vehicle.domains['parking']['parkingPosition'].latitude.value, vehicle.domains['parking']['parkingPosition'].longitude.value, 100)
-                        
-                    else:
-                        await self.__vehicles[vin].update(fromDict=vehicleDict, updateCapabilities=updateCapabilities, updatePictures=updatePictures,
-                                                    selective=selective)
-                except RetrievalError as retrievalError:
-                    catchedRetrievalError = retrievalError
-                    LOG.info('Failed to retrieve data for VIN %s: %s', vin, retrievalError)
-            # delete those vins that are not anymore available
-            for vin in [vin for vin in self.__vehicles if vin not in vins]:
-                del self.__vehicles[vin]
-
-            #self.__cache[url] = (data, str(datetime.utcnow()))
+                    self.__cache[url] = (data, str(datetime.utcnow()))
             if catchedRetrievalError:
                 raise catchedRetrievalError
 
@@ -243,44 +253,41 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     def getChargingStations(self, latitude, longitude, searchRadius=None, market=None, useLocale=None,  # noqa: C901
                             force=False) -> AddressableDict[str, ChargingStation]:
         chargingStationMap: AddressableDict[str, ChargingStation] = AddressableDict(localAddress='', parent=None)
-        if self.latitude is not None and self.longitude is not None:
-            url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={latitude}&longitude={longitude}'
-            if market is not None:
-                url += f'&market={market}'
-            if useLocale is not None:
-                url += f'&locale={useLocale}'
-            if searchRadius is not None:
-                url += f'&searchRadius={searchRadius}'
-            if self.session.userId is not None:
-                url += f'&userId={self.session.userId}'
-            data = self.fetchData(url, force)
-            if data is not None:
-                if 'chargingStations' in data and data['chargingStations']:
-                    for stationDict in data['chargingStations']:
-                        if 'id' not in stationDict:
-                            break
-                        stationId: str = stationDict['id']
-                        station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
-                                                                fixAPI=self.fixAPI)
-                        chargingStationMap[stationId] = station
+        url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={latitude}&longitude={longitude}'
+        if market is not None:
+            url += f'&market={market}'
+        if useLocale is not None:
+            url += f'&locale={useLocale}'
+        if searchRadius is not None:
+            url += f'&searchRadius={searchRadius}'
+        if self.session.user_id is not None:
+            url += f'&user_id={self.session.user_id}'
+        data = self.fetchDataVW(url, force)
+        if data is not None:
+            if 'chargingStations' in data and data['chargingStations']:
+                for stationDict in data['chargingStations']:
+                    if 'id' not in stationDict:
+                        break
+                    stationId: str = stationDict['id']
+                    station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
+                                                               fixAPI=self.fixAPI)
+                    chargingStationMap[stationId] = station
 
-                    self.__cache[url] = (data, str(datetime.utcnow()))
+                self.__cache[url] = (data, str(datetime.utcnow()))
         return chargingStationMap
 
     def updateChargingStations(self, force: bool = False) -> None:  # noqa: C901 # pylint: disable=too-many-branches
         if self.latitude is not None and self.longitude is not None:
-            url: str = f'https://prod.emea.mobile.charging.cariad.digital/poi/charging-stations/v2?latitude={self.latitude}&longitude={self.longitude}'
+            url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={self.latitude}&longitude={self.longitude}'
             if self.market is not None:
                 url += f'&market={self.market}'
             if self.useLocale is not None:
                 url += f'&locale={self.useLocale}'
             if self.searchRadius is not None:
                 url += f'&searchRadius={self.searchRadius}'
-            if self.session.userId is not None:
-                url += f'&userId={self.session.userId}'
-            LOG.info("update charging stations and token %s", self.session.token['client'])
-            self.session.setToken('technical')
-            data = self.fetchData(url, force)
+            if self.session.user_id is not None:
+                url += f'&user_id={self.session.user_id}'
+            data = self.fetchDataVW(url, force)
             if data is not None:
                 if 'chargingStations' in data and data['chargingStations']:
                     ids: List[str] = []
@@ -376,23 +383,18 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             try:
                 statusResponse: requests.Response = self.session.get(url, allow_redirects=False)
                 self.recordElapsed(statusResponse.elapsed)
-                #LOG.info("fetched response code: %s", statusResponse.status_code)
                 if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
                     data = statusResponse.json()
                     if self.cache is not None:
                         self.cache[url] = (data, str(datetime.utcnow()))
                 elif statusResponse.status_code == requests.codes['too_many_requests']:
-                    LOG.info("too many requests error in fetch with status code %s", statusResponse.status_code)
                     self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code),
                                      'Could not fetch data due to too many requests from your account')
                     raise TooManyRequestsError('Could not fetch data due to too many requests from your account. '
                                                f'Status Code was: {statusResponse.status_code}')
                 elif statusResponse.status_code == requests.codes['unauthorized']:
                     LOG.info('Server asks for new authorization')
-                    client = self.session.token['client']
                     self.login()
-
-                    self.session.setToken(client)
                     statusResponse = self.session.get(url, allow_redirects=False)
                     self.recordElapsed(statusResponse.elapsed)
 
@@ -407,20 +409,72 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                     self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code), 'Could not fetch data due to server error')
                     raise RetrievalError(f'Could not fetch data. Status Code was: {statusResponse.status_code}')
             except requests.exceptions.ConnectionError as connectionError:
-                LOG.info("connection error in fetch")
                 self.notifyError(self, ErrorEventType.CONNECTION, 'connection', 'Could not fetch data due to connection problem')
                 raise RetrievalError from connectionError
             except requests.exceptions.ChunkedEncodingError as chunkedEncodingError:
-                LOG.info("chunkedEncodingerror error in fetch")
                 self.notifyError(self, ErrorEventType.CONNECTION, 'chunked encoding error',
                                  'Could not fetch data due to connection problem with chunked encoding')
                 raise RetrievalError from chunkedEncodingError
             except requests.exceptions.ReadTimeout as timeoutError:
-                LOG.info("timeout error in fetch")
                 self.notifyError(self, ErrorEventType.TIMEOUT, 'timeout', 'Could not fetch data due to timeout')
                 raise RetrievalError from timeoutError
             except requests.exceptions.RetryError as retryError:
-                LOG.info("retry error in fetch")
+                raise RetrievalError from retryError
+            except requests.exceptions.JSONDecodeError as jsonError:
+                if allowEmpty:
+                    data = None
+                else:
+                    self.notifyError(self, ErrorEventType.JSON, 'json', 'Could not fetch data due to error in returned data')
+                    raise RetrievalError from jsonError
+        return data
+
+    def fetchDataVW(self, url, force=False, allowEmpty=False, allowHttpError=False, allowedErrors=None) -> Optional[Dict[str, Any]]:  # noqa: C901
+        data: Optional[Dict[str, Any]] = None
+        cacheDate: Optional[datetime] = None
+        if not force and (self.maxAge is not None and self.cache is not None and url in self.cache):
+            data, cacheDateString = self.cache[url]
+            cacheDate = datetime.fromisoformat(cacheDateString)
+        if data is None or self.maxAge is None \
+                or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.maxAge))):
+            try:
+                statusResponse: requests.Response = self.VWsession.get(url, allow_redirects=False)
+                self.recordElapsed(statusResponse.elapsed)
+                if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
+                    data = statusResponse.json()
+                    if self.cache is not None:
+                        self.cache[url] = (data, str(datetime.utcnow()))
+                elif statusResponse.status_code == requests.codes['too_many_requests']:
+                    self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code),
+                                     'Could not fetch data due to too many requests from your account')
+                    raise TooManyRequestsError('Could not fetch data due to too many requests from your account. '
+                                               f'Status Code was: {statusResponse.status_code}')
+                elif statusResponse.status_code == requests.codes['unauthorized']:
+                    LOG.info('Server asks for new authorization')
+                    self.vwLogin()
+                    statusResponse = self.VWsession.get(url, allow_redirects=False)
+                    self.recordElapsed(statusResponse.elapsed)
+
+                    if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
+                        data = statusResponse.json()
+                        if self.cache is not None:
+                            self.cache[url] = (data, str(datetime.utcnow()))
+                    elif not allowHttpError or (allowedErrors is not None and statusResponse.status_code not in allowedErrors):
+                        self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code), 'Could not fetch data due to server error')
+                        raise RetrievalError(f'Could not fetch data even after re-authorization. Status Code was: {statusResponse.status_code}')
+                elif not allowHttpError or (allowedErrors is not None and statusResponse.status_code not in allowedErrors):
+                    self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code), 'Could not fetch data due to server error')
+                    raise RetrievalError(f'Could not fetch data. Status Code was: {statusResponse.status_code}')
+            except requests.exceptions.ConnectionError as connectionError:
+                self.notifyError(self, ErrorEventType.CONNECTION, 'connection', 'Could not fetch data due to connection problem')
+                raise RetrievalError from connectionError
+            except requests.exceptions.ChunkedEncodingError as chunkedEncodingError:
+                self.notifyError(self, ErrorEventType.CONNECTION, 'chunked encoding error',
+                                 'Could not fetch data due to connection problem with chunked encoding')
+                raise RetrievalError from chunkedEncodingError
+            except requests.exceptions.ReadTimeout as timeoutError:
+                self.notifyError(self, ErrorEventType.TIMEOUT, 'timeout', 'Could not fetch data due to timeout')
+                raise RetrievalError from timeoutError
+            except requests.exceptions.RetryError as retryError:
                 raise RetrievalError from retryError
             except requests.exceptions.JSONDecodeError as jsonError:
                 if allowEmpty:

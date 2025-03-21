@@ -446,8 +446,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                         img = base64.b64decode(img)  # pyright: ignore[reportPossiblyUnboundVariable]
                         img = Image.open(io.BytesIO(img))  # pyright: ignore[reportPossiblyUnboundVariable]
                         cache_date = datetime.fromisoformat(cache_date_string)
-                    if img is None or self.active_config['max_age'] is None \
-                            or (cache_date is not None and cache_date < (datetime.utcnow() - timedelta(seconds=self.active_config['max_age']))):
+                    if img is None or self.weConnect.maxAgePictures is None \
+                            or (cache_date is not None and cache_date < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
                         try:
                             imageDownloadResponse = requests.get(image_url, stream=True)
                             if imageDownloadResponse.status_code == codes['ok']:
@@ -497,8 +497,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
     def updateStatusPicture(self) -> None:  # noqa: C901
         if not SUPPORT_IMAGES:
             return
-        if 'car_birdview' in self.__carImages:
-            img: Image = self.__carImages['car_birdview']
+        if 'UNMODIFIED_EXTERIOR_FRONT' in self.__carImages:
+            img: Image = self.__carImages['UNMODIFIED_EXTERIOR_FRONT']
 
             badges: Set[Vehicle.Badge] = set()
 

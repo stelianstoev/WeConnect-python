@@ -260,8 +260,8 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             url += f'&locale={useLocale}'
         if searchRadius is not None:
             url += f'&searchRadius={searchRadius}'
-        if self.session.user_id is not None:
-            url += f'&user_id={self.session.user_id}'
+        if self.VWsession.user_id is not None:
+            url += f'&userId={self.VWsession.user_id}'
         data = self.fetchDataVW(url, force)
         if data is not None:
             if 'chargingStations' in data and data['chargingStations']:
@@ -285,8 +285,8 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                 url += f'&locale={self.useLocale}'
             if self.searchRadius is not None:
                 url += f'&searchRadius={self.searchRadius}'
-            if self.session.user_id is not None:
-                url += f'&user_id={self.session.user_id}'
+            if self.VWsession.user_id is not None:
+                url += f'&userId={self.VWsession.user_id}'
             data = self.fetchDataVW(url, force)
             if data is not None:
                 if 'chargingStations' in data and data['chargingStations']:

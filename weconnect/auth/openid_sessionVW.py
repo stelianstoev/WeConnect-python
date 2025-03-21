@@ -1,42 +1,26 @@
-"""Implements a session class that handles OpenID authentication."""
-from __future__ import annotations
-from typing import TYPE_CHECKING
-
 from enum import Enum, auto
 import time
 import logging
-import requests
-from jwt import JWT
-from datetime import datetime, timezone
-
-from oauthlib.common import UNICODE_ASCII_CHARACTER_SET, generate_nonce, generate_token
-from oauthlib.oauth2.rfc6749.parameters import parse_authorization_code_response, parse_token_response, prepare_grant_uri
 from oauthlib.oauth2.rfc6749.errors import InsecureTransportError, TokenExpiredError, MissingTokenError
 from oauthlib.oauth2.rfc6749.utils import is_secure_transport
 
+import requests
+
+from oauthlib.common import UNICODE_ASCII_CHARACTER_SET, generate_nonce, generate_token
+from oauthlib.oauth2.rfc6749.parameters import parse_authorization_code_response, parse_token_response, prepare_grant_uri
+
 from requests.adapters import HTTPAdapter
 
-from carconnectivity.errors import AuthenticationError, RetrievalError
+from weconnect.auth.auth_util import addBearerAuthHeader
+from weconnect.errors import AuthentificationError, RetrievalError
 
-from weconnect.auth.auth_util import add_bearer_auth_header
-from weconnect.auth.helpers.blacklist_retry import BlacklistRetry
+from weconnect.elements.helpers.blacklist_retry import BlacklistRetry
 
-if TYPE_CHECKING:
-    from typing import Dict
 
 LOG = logging.getLogger("weconnect")
 
 
 class AccessType(Enum):
-    """
-    Enum representing different types of access tokens used in the authentication process.
-
-    Attributes:
-        NONE (auto): No access token.
-        ACCESS (auto): Access token used for accessing resources.
-        ID (auto): ID token used for identifying the user.
-        REFRESH (auto): Refresh token used for obtaining new access tokens.
-    """
     NONE = auto()
     ACCESS = auto()
     ID = auto()
@@ -44,75 +28,44 @@ class AccessType(Enum):
 
 
 class OpenIDSessionVW(requests.Session):
-    """
-    OpenIDSessionVW is a subclass of requests.Session that handles OpenID Connect authentication.
-    """
-    def __init__(self, client_id=None, redirect_uri=None, refresh_url=None, scope=None, token=None, metadata=None, state=None, timeout=None,
-                 force_relogin_after=None, **kwargs) -> None:
+    def __init__(self, client_id=None, redirect_uri=None, refresh_url=None, scope=None, token=None, metadata={}, state=None, timeout=None,
+                 forceReloginAfter=None, **kwargs):
         super(OpenIDSessionVW, self).__init__(**kwargs)
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.refresh_url = refresh_url
         self.scope = scope
-        self.state: str = state or generate_token(length=30, chars=UNICODE_ASCII_CHARACTER_SET)
+        self.state = state or generate_token(length=30, chars=UNICODE_ASCII_CHARACTER_SET)
 
         self.timeout = timeout
-        self._token = token
-        self.metadata = metadata or {}
-        self.last_login = None
-        self._force_relogin_after = force_relogin_after
+        self._token = None
+        self.token = token
+        self.metadata = metadata
+        self.lastLogin = None
+        self.forceReloginAfter = forceReloginAfter
 
-        self._retries: bool | int = False
-
-    @property
-    def force_relogin_after(self):
-        """
-        Get the number of seconds after which a forced re-login is required.
-
-        Returns:
-            Number of seconds until a forced re-login is required.
-        """
-        return self._force_relogin_after
-
-    @force_relogin_after.setter
-    def force_relogin_after(self, new_force_relogin_after_value):
-        """
-        Sets the time after which a forced re-login should occur.
-
-        Args:
-            new_force_relogin_after_value (float or None): The new value for the forced re-login time.
-                If None, no forced re-login will be set.
-        """
-        self._force_relogin_after = new_force_relogin_after_value
-        if new_force_relogin_after_value is not None and self.last_login is None:
-            self.last_login = time.time()
+        self._retries = False
 
     @property
-    def retries(self) -> bool | int:
-        """
-        Get the number of retries.
+    def forceReloginAfter(self):
+        return self._forceReloginAfter
 
-        Returns:
-            bool | int: The number of retries. It can be a boolean or an integer.
-        """
+    @forceReloginAfter.setter
+    def forceReloginAfter(self, newValue):
+        self._forceReloginAfter = newValue
+        if newValue is not None and self.lastLogin is None:
+            self.lastLogin = time.time()
+
+    @property
+    def retries(self):
         return self._retries
 
     @retries.setter
-    def retries(self, new_retries_value):
-        """
-        Set the number of retries for the session and configure retry behavior.
-
-        Args:
-            new_retries_value (int): The new number of retries to set. If provided,
-                                     configures the session to retry on internal server
-                                     errors (HTTP status code 500) and blacklist status
-                                     code 429 with a backoff factor of 0.1.
-
-        """
-        self._retries = new_retries_value
-        if new_retries_value:
+    def retries(self, newValue):
+        self._retries = newValue
+        if newValue:
             # Retry on internal server error (500)
-            retries = BlacklistRetry(total=new_retries_value,
+            retries = BlacklistRetry(total=newValue,
                                      backoff_factor=0.1,
                                      status_forcelist=[500],
                                      status_blacklist=[429],
@@ -121,225 +74,100 @@ class OpenIDSessionVW(requests.Session):
 
     @property
     def token(self):
-        """
-        Retrieve the current token.
-
-        Returns:
-            str: The current token.
-        """
         return self._token
 
     @token.setter
-    def token(self, new_token):
-        """
-        Updates the current token with a new token and sets expiration details if not provided.
-
-        Args:
-            new_token (dict): The new token to be set. If the token does not contain 'expires_in',
-                              it will be set to the same value as the current token's 'expires_in'
-                              or default to 3600 seconds. If 'expires_in' is provided but 'expires_at'
-                              is not, 'expires_at' will be calculated based on the current time.
-
-        Returns:
-            None
-        """
-        if new_token is not None:
+    def token(self, newToken):
+        if newToken is not None:
             # If new token e.g. after refresh is missing expires_in we assume it is the same than before
-            if 'expires_in' not in new_token:
+            if 'expires_in' not in newToken:
                 if self._token is not None and 'expires_in' in self._token:
-                    new_token['expires_in'] = self._token['expires_in']
+                    newToken['expires_in'] = self._token['expires_in']
                 else:
-                    if 'id_token' in new_token:
-                        jwt_instance = JWT()
-                        meta_data = jwt_instance.decode(new_token['id_token'], do_verify=False)
-                        if 'exp' in meta_data:
-                            new_token['expires_at'] = meta_data['exp']
-                            expires_at = datetime.fromtimestamp(meta_data['exp'], tz=timezone.utc)
-                            new_token['expires_in'] = (expires_at - datetime.now(tz=timezone.utc)).total_seconds()
-                        else:
-                            new_token['expires_in'] = 3600
-                    else:
-                        new_token['expires_in'] = 3600
-            # If expires_in is set and expires_at is not set we calculate expires_at from expires_in using the current time
-            if 'expires_in' in new_token and 'expires_at' not in new_token:
-                new_token['expires_at'] = time.time() + int(new_token.get('expires_in'))
-        self._token = new_token
+                    newToken['expires_in'] = 3600
+            # It expires_in is set and expires_at is not set we calculate expires_at from expires_in using the current time
+            if 'expires_in' in newToken and 'expires_at' not in newToken:
+                newToken['expires_at'] = time.time() + int(newToken.get('expires_in'))
+        self._token = newToken
 
     @property
-    def access_token(self):
-        """
-        Retrieve the access token from the stored token.
-
-        Returns:
-            str: The access token if it exists in the stored token, otherwise None.
-        """
+    def accessToken(self):
         if self._token is not None and 'access_token' in self._token:
             return self._token.get('access_token')
         return None
 
-    @access_token.setter
-    def access_token(self, new_access_token):
-        """
-        Sets a new access token.
-
-        Args:
-            new_access_token (str): The new access token to be set.
-        """
+    @accessToken.setter
+    def accessToken(self, newValue):
         if self._token is None:
             self._token = {}
-        self._token['access_token'] = new_access_token
+        self._token['access_token'] = newValue
 
     @property
-    def refresh_token(self):
-        """
-        Retrieves the refresh token from the stored token.
-
-        Returns:
-            str or None: The refresh token if it exists in the stored token, otherwise None.
-        """
+    def refreshToken(self):
         if self._token is not None and 'refresh_token' in self._token:
             return self._token.get('refresh_token')
         return None
 
     @property
-    def id_token(self):
-        """
-        Retrieve the ID token from the stored token.
-
-        Returns:
-            str or None: The ID token if it exists in the stored token, otherwise None.
-        """
+    def idToken(self):
         if self._token is not None and 'id_token' in self._token:
             return self._token.get('id_token')
         return None
 
     @property
-    def token_type(self):
-        """
-        Retrieve the token type from the stored token.
-
-        Returns:
-            str: The type of the token if available, otherwise None.
-        """
+    def tokenType(self):
         if self._token is not None and 'token_type' in self._token:
             return self._token.get('token_type')
         return None
 
     @property
-    def expires_in(self):
-        """
-        Retrieve the expiration time of the current token.
-
-        Returns:
-            int or None: The number of seconds until the token expires if available,
-                         otherwise None.
-        """
+    def expiresIn(self):
         if self._token is not None and 'expires_in' in self._token:
             return self._token.get('expires_in')
         return None
 
     @property
-    def expires_at(self):
-        """
-        Retrieve the expiration time of the current token.
-
-        Returns:
-            int or None: The expiration time of the token in epoch time if available,
-                         otherwise None.
-        """
+    def expiresAt(self):
         if self._token is not None and 'expires_at' in self._token:
             return self._token.get('expires_at')
         return None
 
     @property
     def authorized(self):
-        """
-        Check if the session is authorized.
-
-        Returns:
-            bool: True if the session has a valid access token, False otherwise.
-        """
-        return bool(self.access_token)
+        return bool(self.accessToken)
 
     @property
     def expired(self):
-        """
-        Check if the session has expired.
-
-        Returns:
-            bool: True if the session has expired, False otherwise.
-        """
-        return self.expires_at is not None and self.expires_at < time.time()
+        return self.expiresAt is not None and self.expiresAt < time.time()
 
     @property
-    def user_id(self):
-        """
-        Retrieve the user ID from the metadata.
-        """
+    def userId(self):
         if 'userId' in self.metadata:
             return self.metadata['userId']
         return None
 
-    @user_id.setter
-    def user_id(self, new_user_id):
-        """
-        Sets the user ID in the metadata.
-        """
-        self.metadata['userId'] = new_user_id
+    @userId.setter
+    def userId(self, newUserId):
+        self.metadata['userId'] = newUserId
 
     def login(self):
-        """
-        Logs in the user, needs to be implemetned in subclass
-
-        This method sets the `last_login` attribute to the current time.
-        """
-        self.last_login = time.time()
+        self.lastLogin = time.time()
 
     def refresh(self):
-        """
-        Refresh the current session, needs to be implemetned in subclass
+        pass
 
-        This method is intended to refresh the authentication session.
-        Currently, it is not implemented and does not perform any actions.
-        """
-
-    def authorization_url(self, url, state=None, **kwargs):
-        """
-        Generates the authorization URL for the OpenID Connect flow.
-
-        Args:
-            url (str): The base URL for the authorization endpoint.
-            state (str, optional): An optional state parameter to maintain state between the request and callback. Defaults to None.
-            **kwargs: Additional parameters to include in the authorization URL.
-
-        Returns:
-            str: The complete authorization URL with the necessary query parameters.
-        """
+    def authorizationUrl(self, url, state=None, **kwargs):
         state = state or self.state
-        auth_url = prepare_grant_uri(uri=url, client_id=self.client_id, redirect_uri=self.redirect_uri, response_type='code id_token token', scope=self.scope,
-                                     state=state, nonce=generate_nonce(), **kwargs)
-        return auth_url
+        authUrl = prepare_grant_uri(uri=url, client_id=self.client_id, redirect_uri=self.redirect_uri, response_type='code id_token token', scope=self.scope,
+                                    state=state, nonce=generate_nonce(), **kwargs)
+        return authUrl
 
-    def parse_from_fragment(self, authorization_response, state=None):
-        """
-        Parses the authorization response fragment and extracts the token.
-
-        Args:
-            authorization_response (str): The authorization response fragment containing the token.
-            state (str, optional): The state parameter to validate the response. Defaults to None.
-
-        Returns:
-            dict: The parsed token information.
-        """
+    def parseFromFragment(self, authorization_response, state=None):
         state = state or self.state
         self.token = parse_authorization_code_response(authorization_response, state=state)
         return self.token
 
-    def parse_from_body(self, token_response, state=None):
-        """
-            Parse the JSON token response body into a dict.
-        """
-        del state
+    def parseFromBody(self, token_response, state=None):
         self.token = parse_token_response(token_response, scope=self.scope)
         return self.token
 
@@ -349,28 +177,28 @@ class OpenIDSessionVW(requests.Session):
         url,
         data=None,
         headers=None,
-        timeout=None,
         withhold_token=False,
         access_type=AccessType.ACCESS,
         token=None,
+        timeout=None,
         **kwargs
-    ) -> requests.Response:
+    ):
         """Intercept all requests and add the OAuth 2 token if present."""
         if not is_secure_transport(url):
             raise InsecureTransportError()
         if access_type != AccessType.NONE and not withhold_token:
-            if self.force_relogin_after is not None and self.last_login is not None and (self.last_login + self.force_relogin_after) < time.time():
-                LOG.debug("Forced new login after %ds", self.force_relogin_after)
+            if self.forceReloginAfter is not None and self.lastLogin is not None and (self.lastLogin + self.forceReloginAfter) < time.time():
+                LOG.debug("Forced new login after %ds", self.forceReloginAfter)
                 self.login()
             try:
-                url, headers, data = self.add_token(url, body=data, headers=headers, access_type=access_type, token=token)
+                url, headers, data = self.addToken(url, body=data, headers=headers, access_type=access_type, token=token)
             # Attempt to retrieve and save new access token if expired
             except TokenExpiredError:
                 LOG.info('Token expired')
-                self.access_token = None
+                self.accessToken = None
                 try:
                     self.refresh()
-                except AuthenticationError:
+                except AuthentificationError:
                     self.login()
                 except TokenExpiredError:
                     self.login()
@@ -379,62 +207,41 @@ class OpenIDSessionVW(requests.Session):
                 except RetrievalError:
                     LOG.error('Retrieval Error while refreshing token. Probably the token was invalidated. Trying to do a new login instead.')
                     self.login()
-                url, headers, data = self.add_token(url, body=data, headers=headers, access_type=access_type, token=token)
+                url, headers, data = self.addToken(url, body=data, headers=headers, access_type=access_type, token=token)
             except MissingTokenError:
-                LOG.info('Missing token, need new login')
+                LOG.error('Missing token')
                 self.login()
-                url, headers, data = self.add_token(url, body=data, headers=headers, access_type=access_type, token=token)
+                url, headers, data = self.addToken(url, body=data, headers=headers, access_type=access_type, token=token)
 
         if timeout is None:
             timeout = self.timeout
 
         return super(OpenIDSessionVW, self).request(
-            method, url, headers=headers, data=data, timeout=timeout, **kwargs
+            method, url, headers=headers, data=data, **kwargs
         )
 
-    def add_token(self, uri, body=None, headers=None, access_type=AccessType.ACCESS, token=None, **_):  # pylint: disable=too-many-arguments
-        """
-        Adds an authorization token to the request headers based on the specified access type.
-
-        Args:
-            uri (str): The URI to which the request is being made.
-            body (Optional[Any]): The body of the request. Defaults to None.
-            headers (Optional[Dict[str, str]]): The headers of the request. Defaults to None.
-            access_type (AccessType): The type of access token to use (ID, REFRESH, or ACCESS). Defaults to AccessType.ACCESS.
-            token (Optional[str]): The token to use. If None, the method will use the appropriate token based on the access_type. Defaults to None.
-            **_ (Any): Additional keyword arguments.
-
-        Raises:
-            InsecureTransportError: If the URI does not use a secure transport (HTTPS).
-            MissingTokenError: If the required token (ID, REFRESH, or ACCESS) is missing.
-            TokenExpiredError: If the access token has expired.
-
-        Returns:
-            Tuple[str, Dict[str, str], Optional[Any]]: The URI, updated headers with the authorization token, and the body of the request.
-        """
-        # Check if the URI uses a secure transport
+    def addToken(self, uri, body=None, headers=None, access_type=AccessType.ACCESS, token=None, **kwargs):
         if not is_secure_transport(uri):
             raise InsecureTransportError()
 
-        # Only add token if it is not explicitly withheld
         if token is None:
             if access_type == AccessType.ID:
-                if not self.id_token:
+                if not (self.idToken):
                     raise MissingTokenError(description="Missing id token.")
-                token = self.id_token
+                token = self.idToken
             elif access_type == AccessType.REFRESH:
-                if not self.refresh_token:
+                if not (self.refreshToken):
                     raise MissingTokenError(description="Missing refresh token.")
-                token = self.refresh_token
+                token = self.refreshToken
             else:
                 if not self.authorized:
                     self.login()
-                if not self.access_token:
+                if not (self.accessToken):
                     raise MissingTokenError(description="Missing access token.")
                 if self.expired:
                     raise TokenExpiredError()
-                token = self.access_token
+                token = self.accessToken
 
-        return_headers: Dict[str, str] = add_bearer_auth_header(token, headers)
+        headers = addBearerAuthHeader(token, headers)
 
-        return (uri, return_headers, body)
+        return (uri, headers, body)

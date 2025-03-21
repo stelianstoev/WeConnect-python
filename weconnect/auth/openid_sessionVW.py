@@ -43,13 +43,13 @@ class AccessType(Enum):
     REFRESH = auto()
 
 
-class OpenIDSession(requests.Session):
+class OpenIDSessionVW(requests.Session):
     """
-    OpenIDSession is a subclass of requests.Session that handles OpenID Connect authentication.
+    OpenIDSessionVW is a subclass of requests.Session that handles OpenID Connect authentication.
     """
     def __init__(self, client_id=None, redirect_uri=None, refresh_url=None, scope=None, token=None, metadata=None, state=None, timeout=None,
                  force_relogin_after=None, **kwargs) -> None:
-        super(OpenIDSession, self).__init__(**kwargs)
+        super(OpenIDSessionVW, self).__init__(**kwargs)
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.refresh_url = refresh_url
@@ -388,7 +388,7 @@ class OpenIDSession(requests.Session):
         if timeout is None:
             timeout = self.timeout
 
-        return super(OpenIDSession, self).request(
+        return super(OpenIDSessionVW, self).request(
             method, url, headers=headers, data=data, timeout=timeout, **kwargs
         )
 

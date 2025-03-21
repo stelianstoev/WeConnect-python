@@ -12,6 +12,10 @@
 
 Python API for the Volkswagen WeConnect Services. If you are not a developer and ended up here you probably want to check out a project using this library (see below).
 
+## How to run locally
+You need these commands to modify the existing container for now
+apt-get update && apt-get install nano git -y && cd /opt/venv/lib/python3.12/site-packages/weconnect && git clone https://github.com/stelianstoev/WeConnect-python.git && cp WeConnect-python/weconnect/* -R . && pip3 install pyjwt
+
 ## Projects in which the library is used
 - [VWsFriend](https://github.com/tillsteinbach/VWsFriend): VWsFriend records statistics about your car (charging sessions, battery, trips, fueling, etc.) and displays them nicely. It also allows you to forward data from the car to other applications such as [A better routeplanner](https://abetterrouteplanner.com/) and allows you to integrate your car into [Apple HomeKit](https://www.apple.com/ios/home/)
 - [WeConnect-cli](https://github.com/tillsteinbach/WeConnect-cli): A commandline interface to interact with WeConnect
@@ -52,4 +56,4 @@ In an effort to try to make WeConnect-python also to work with latest generation
 
 ## To run manually:
 
-apt-get update && apt-get install nano git -y && cd /opt/venv/lib/python3.12/site-packages/weconnect && git clone https://github.com/stelianstoev/WeConnect-python.git && cp WeConnect-python/weconnect/* -R . && pip3 install pyjwt
+apt-get update && apt-get install nano git -y && cd /opt/venv/lib/python3.12/site-packages/weconnect && git clone https://github.com/stelianstoev/CarConnectivity-connector-skoda.git && cp -R CarConnectivity-connector-skoda/src/carconnectivity_connectors/skoda/auth/* auth/ && git clone https://github.com/stelianstoev/WeConnect-python.git && cp -R WeConnect-python/weconnect/auth/* auth/ && cp WeConnect-python/weconnect/weconnect.py . && pip install carconnectivity jwt==1.3.1

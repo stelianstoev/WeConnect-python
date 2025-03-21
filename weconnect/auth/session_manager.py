@@ -76,7 +76,7 @@ class SessionManager():
         elif service == Service.MY_CUPRA:
             session = MyCupraSession(sessionuser=sessionuser, token=token, metadata=metadata)
         elif service == Service.MY_SKODA:
-            session = MySkodaSession(sessionuser=sessionuser, token=token, metadata=metadata)
+            session = MySkodaSession(session_user=sessionuser, token=token, metadata=metadata, cache={})
         self.sessions[(service, sessionuser)] = session
         return session
 

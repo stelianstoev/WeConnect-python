@@ -1,533 +1,224 @@
-from datetime import datetime, timedelta
-from http.client import RemoteDisconnected
-from typing import Dict, Optional, Match
+"""
+Module implements the WeConnect Session handling.
+"""
+from __future__ import annotations
+from typing import TYPE_CHECKING
 
-import re
 import json
 import logging
+import base64
+import hashlib
+import random
+import string
+
+from urllib.parse import parse_qsl, urlparse
+
 import requests
+from requests.models import CaseInsensitiveDict
 
-from urllib.parse import parse_qsl, urlsplit
-
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
-
-from oauthlib.common import to_unicode
+from oauthlib.common import add_params_to_uri, generate_nonce, to_unicode
 from oauthlib.oauth2 import InsecureTransportError
 from oauthlib.oauth2 import is_secure_transport
 
-from requests.models import CaseInsensitiveDict
+from carconnectivity.errors import AuthenticationError, RetrievalError, TemporaryAuthenticationError
+
 from weconnect.auth.openid_session import AccessType
+from weconnect.auth.skoda_web_session import SkodaWebSession
+
+if TYPE_CHECKING:
+    from typing import Set
 
 
-from weconnect.auth.vw_web_session import VWWebSession
-from weconnect.errors import APICompatibilityError, AuthentificationError, RetrievalError, TemporaryAuthentificationError
+LOG: logging.Logger = logging.getLogger("carconnectivity.connectors.skoda.auth")
 
 
-LOG = logging.getLogger("weconnect")
-
-# Headers used for fetching tokens for different clients
-TOKEN_HEADERS = {
-    'connect': {
-        'Accept': 'application/json',
-        'X-Platform': 'Android',
-        'Accept-Charset': 'UTF-8',
-        'Content-Type': 'application/json',
-        'Connection': 'keep-alive',
-        'Accept-Encoding': 'gzip',
-        'User-Agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
-    },
-    'technical': {
-        'Accept': 'application/json',
-        'X-Platform': 'Android',
-        'Accept-Charset': 'UTF-8',
-        'Content-Type': 'application/json',
-        'Connection': 'keep-alive',
-        'Accept-Encoding': 'gzip',
-        'User-Agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
-    }
-}
-
-
-class MySkodaSession(VWWebSession):
-    def __init__(self, sessionuser, **kwargs):
-        super(MySkodaSession, self).__init__(client_id='f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com',
-                                             refresh_url='https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=technical',
-                                             scope='openid mbb profile',
-                                             redirect_uri='skodaconnect://oidc.login/',
-                                             state=None,
-                                             sessionuser=sessionuser,
+class MySkodaSession(SkodaWebSession):
+    """
+    MySkodaSession class handles the authentication and session management for Volkswagen's WeConnect service.
+    """
+    def __init__(self, session_user, **kwargs) -> None:
+        super(MySkodaSession, self).__init__(client_id='7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com',
+                                             refresh_url='https://mysmob.api.connect.skoda-auto.cz/api/v1/authentication/refresh-token?tokenType=CONNECT',
+                                             scope='address badge birthdate cars driversLicense dealers email mileage mbb nationalIdentifier openid phone profession profile vin',
+                                             redirect_uri='myskoda://redirect/login/',
+                                             session_user=session_user,
                                              **kwargs)
 
         self.headers = CaseInsensitiveDict({
-            'accept': '*/*',
-            'content-type': 'application/json',
-            'user-agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
-            'accept-language': 'de-de',
-            'accept-encoding': 'gzip, deflate, br'
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
+                          'Chrome/74.0.3729.185 Mobile Safari/537.36',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,'
+                      'application/signed-exchange;v=b3',
+            'accept-language': 'en-US,en;q=0.9',
+            'accept-encoding': 'gzip, deflate',
+            'x-requested-with': 'cz.skodaauto.connect',
+            'upgrade-insecure-requests': '1',
         })
 
-        self._session_tokens = {}
-
-    def login(self, client='technical'):
-        LOG.info('starting login with skoda session')
+    def login(self):
         super(MySkodaSession, self).login()
-        self.cookies.clear()
-        
-        if client in self._session_tokens and  len(self._session_tokens[client]) > 0:
-            LOG.info('Revoking old tokens for client %s.', client)
-            try:
-                self.logout(client)
-            except:
-                pass
-        
-        if client == 'connect':
-            self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
-            self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
-        if client == 'technical':
-            self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
-            self.scope= 'openid mbb profile'
-        authorizationUrl = self.authorizationUrl(url='https://identity.vwgroup.io/oidc/v1/authorize')
-        #LOG.info('starting webAuth')
-        response = self.doWebAuth(authorizationUrl)
-        #LOG.info('starting fetchTokens with client %s', client)
-        #LOG.info('Client_id is: %s', self.client_id)
-        #LOG.info('Scope is: %s', self.scope)
 
-        token_data = self.fetchTokens(client,
-                         authorization_response=response
-                         )
-        
-        LOG.info('%s: token is fetched', client)
+        verifier = "".join(random.choices(string.ascii_uppercase + string.digits, k=16))
+        verifier_hash = hashlib.sha256(verifier.encode("utf-8")).digest()
+        code_challenge = base64.b64encode(verifier_hash).decode("utf-8").replace("+", "-").replace("/", "_").rstrip("=")
+        # retrieve authorization URL
+        authorization_url = self.authorization_url(url='https://identity.vwgroup.io/oidc/v1/authorize', prompt='login', code_challenge=code_challenge,
+                                                   code_challenge_method='s256')
+        # perform web authentication
+        response = self.do_web_auth(authorization_url)
+        # fetch tokens from web authentication response
+        self.fetch_tokens('https://mysmob.api.connect.skoda-auto.cz/api/v1/authentication/exchange-authorization-code?tokenType=CONNECT',
+                          authorization_response=response, verifier=verifier)
 
-        # Assume that tokens were received OK
-        if not 'error' in token_data:
-            self.token['client'] = client
-        else:
-            error = token_data.get('error', '')
-            if 'error_description' in token_data:
-                error_description = token_data.get('error_description', '')
-                raise TemporaryAuthentificationError(f'{error} - {error_description}')
-            else:
-                raise TemporaryAuthentificationError(error)
-        #for key in self._session_tokens.get(client, {}):
-            #LOG.info(f'Got {key} for client {client}, token: "{self._session_tokens.get(client, {}).get(key, None)}"')
-        if client != 'connect':
-            self.login(client='connect')
-
-    def logout(self, client:str):
-        """Logout, revoke tokens."""
-        try:
-            refresh_token = self._session_tokens[client]['refresh_token']
-            self.revoke_token(refresh_token, client)
-        except:
-            LOG.info('Some problem occured while revoking tokens, ignoring...')
-            pass
-
-    def revoke_token(self, refresh_token, client):
-        """Revoke refresh token for supplied client."""
-        try:
-            req_headers = TOKEN_HEADERS[client]
-            # "Skoda" tokens
-            params: str = json.dumps(
-                {
-                    'refreshToken': refresh_token,
-                })
-
-            revoke_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token/revoke?systemId='+client
-            revokation_response = self.post(revoke_url, headers = req_headers, data = params)
-            if revokation_response.status_code == requests.codes['no_content']:
-                LOG.info(f'Revocation of token for client "{client}" successful')
-                # Remove tokens from storage
-                self._session_tokens[client] = {}
-                return True
-            else:
-                LOG.info(f'Revocation of token for client "{client}" failed')
-                return False
-        except Exception as e:
-            LOG.info(f'Revocation of token for {client} failed with error: {e}')
-        return False
-
-    def setToken(self, client:str):
-        token = self._session_tokens[client]['token_raw']['access_token']
-        valid = False
-
-        self.token = self._session_tokens[client]['token_raw']
-        self.token['client'] = client
-
-        if token is not False:
-            valid = self.validate_token(token)
-        if not valid:
-            LOG.info(f'No valid access token for "{client}"')
-            # Try to refresh tokens for client
-            if self.refreshTokens(client) is True:
-                raise RetrievalError(f'No valid tokens for client "{client}"')
-            else:
-                LOG.info(f'Tokens refreshed successfully for client "{client}"')
-                pass
-        
-        self.token = self._session_tokens[client]['token_raw']
-        self.token['client'] = client
-
-        #self.accessToken = self._session_tokens[client]['access_token']
-        #self.refreshToken = self._session_tokens[client]['refresh_token']
-        #self.idToken = self._session_tokens[client]['id_token']
-
-
-        if client == 'connect':
-            self.client_id = '7f045eee-7003-4379-9968-9355ed2adb06@apps_vw-dilab_com'
-            self.scope= 'openid profile address cars email birthdate badge mbb phone driversLicense dealers profession vin mileage'
-        if client == 'technical':
-            self.client_id = 'f9a2359a-b776-46d9-bd0c-db1904343117@apps_vw-dilab_com'
-            self.scope= 'openid mbb profile'
-
-    def validate_token(self, token):
-        """Function to validate a single token."""
-        try:
-            now = datetime.now() + timedelta(minutes = 4)
-            exp = self.decode_token(token).get('exp', None)
-            expires = datetime.fromtimestamp(int(exp))
-
-            # Lazy check but it's very inprobable that the token expires the very second we want to use it
-            if expires > now:
-                return expires
-            else:
-                LOG.info(f'Token expired at {expires.strftime("%Y-%m-%d %H:%M:%S")})')
-                return False
-        except Exception as e:
-            LOG.info(f'Token validation failed, {e}')
-        return False
-    
-    def decode_token(self, token):
-        """Helper method to deocde jwt token, different syntax in different versions."""
-        # Try old pyJWT syntax first
-        try:
-            decoded = jwt.decode(token, verify=False)
-        except:
-            decoded = None
-        # Try new pyJWT syntax if old fails
-        if decoded is None:
-            try:
-                decoded = jwt.decode(token, options={'verify_signature': False})
-            except:
-                decoded = None
-        if decoded is None:
-            raise RetrievalError('Failed to decode token')
-        else:
-            return decoded
-
-
-    def refresh(self):
-        LOG.info("Refresh token for client: %s", self.token['client'])
-        self.refreshTokens(
-            self.token['client']
+    def refresh(self) -> None:
+        # refresh tokens from refresh endpoint
+        self.refresh_tokens(
+            'https://mysmob.api.connect.skoda-auto.cz/api/v1/authentication/refresh-token?tokenType=CONNECT',
         )
 
-    def doWebAuth(self, authorizationUrl):  # noqa: C901
-        websession: requests.Session = requests.Session()
-        retries = Retry(total=self.retries,
-                        backoff_factor=0.1,
-                        status_forcelist=[500],
-                        raise_on_status=False)
-        websession.proxies.update(self.proxies)
-        websession.mount('https://', HTTPAdapter(max_retries=retries))
-        websession.headers = CaseInsensitiveDict({
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'OneConnect/000000157 CFNetwork/1485 Darwin/23.1.0',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-                'x-requested-with': 'cz.skodaauto.connect',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive'
-        })
-        while True:
-            loginFormResponse: requests.Response = websession.get(authorizationUrl, allow_redirects=False)
-            if loginFormResponse.status_code == requests.codes['ok']:
-                break
-            elif loginFormResponse.status_code == requests.codes['found']:
-                if 'Location' in loginFormResponse.headers:
-                    authorizationUrl = loginFormResponse.headers['Location']
-                else:
-                    raise APICompatibilityError('Forwarding without Location in Header')
-            elif loginFormResponse.status_code == requests.codes['internal_server_error']:
-                raise RetrievalError('Temporary server error during login')
-            else:
-                raise APICompatibilityError('Retrieving credentials page was not successfull,'
-                                            f' status code: {loginFormResponse.status_code}')
-
-        # Find login form on page to obtain inputs
-        emailFormRegex = r'<form.+id=\"emailPasswordForm\".*action=\"(?P<formAction>[^\"]+)\"[^>]*>' \
-            r'(?P<formContent>.+?(?=</form>))</form>'
-        match: Optional[Match[str]] = re.search(emailFormRegex, loginFormResponse.text, flags=re.DOTALL)
-        if match is None:
-            raise APICompatibilityError('No login email form found')
-        # retrieve target url from form
-        target: str = match.groupdict()['formAction']
-
-        # Find all inputs and put those in formData dictionary
-        inputRegex = r'<input[\\n\\r\s][^/]*name=\"(?P<name>[^\"]+)\"([\\n\\r\s]value=\"(?P<value>[^\"]+)\")?[^/]*/>'
-        formData: Dict[str, str] = {}
-        for match in re.finditer(inputRegex, match.groupdict()['formContent']):
-            if match.groupdict()['name']:
-                formData[match.groupdict()['name']] = match.groupdict()['value']
-        if not all(x in ['_csrf', 'relayState', 'hmac', 'email'] for x in formData):
-            raise APICompatibilityError('Could not find all required input fields in login page')
-
-        # Set email to the provided username
-        formData['email'] = self.sessionuser.username
-        LOG.info('username in skoda_session is: %s', formData['email'])
-
-        # build url from form action
-        login2Url: str = 'https://identity.vwgroup.io' + target
-
-        loginHeadersForm: CaseInsensitiveDict = websession.headers.copy()
-        loginHeadersForm['Content-Type'] = 'application/x-www-form-urlencoded'
-
-        # Post form content and retrieve credentials page
-        LOG.info('staring with authentication 2URL')
-        login2Response: requests.Response = websession.post(login2Url, headers=loginHeadersForm, data=formData, allow_redirects=True)
-
-        if login2Response.status_code != requests.codes['ok']:  # pylint: disable=E1101
-            if login2Response.status_code == requests.codes['internal_server_error']:
-                raise RetrievalError('Temporary server error during login')
-            raise APICompatibilityError('Retrieving credentials page was not successfull,'
-                                        f' status code: {login2Response.status_code}')
-
-        credentialsTemplateRegex = r'<script>\s+window\._IDK\s+=\s+\{\s' \
-            r'(?P<templateModel>.+?(?=\s+\};?\s+</script>))\s+\};?\s+</script>'
-        match = re.search(credentialsTemplateRegex, login2Response.text, flags=re.DOTALL)
-        if match is None:
-            raise APICompatibilityError('No credentials form found')
-        if match.groupdict()['templateModel']:
-            lineRegex = r'\s*(?P<name>[^\:]+)\:\s+[\'\{]?(?P<value>.+)[\'\}][,]?'
-            form2Data: Dict[str, str] = {}
-            for match in re.finditer(lineRegex, match.groupdict()['templateModel']):
-                if match.groupdict()['name'] == 'templateModel':
-                    templateModelString = '{' + match.groupdict()['value'] + '}'
-                    if templateModelString.endswith(','):
-                        templateModelString = templateModelString[:-len(',')]
-                    templateModel = json.loads(templateModelString)
-                    if 'relayState' in templateModel:
-                        form2Data['relayState'] = templateModel['relayState']
-                    if 'hmac' in templateModel:
-                        form2Data['hmac'] = templateModel['hmac']
-                    if 'emailPasswordForm' in templateModel and 'email' in templateModel['emailPasswordForm']:
-                        form2Data['email'] = templateModel['emailPasswordForm']['email']
-                    if 'error' in templateModel and templateModel['error'] is not None:
-                        if templateModel['error'] == 'validator.email.invalid':
-                            raise AuthentificationError('Error during login, email invalid')
-                        raise AuthentificationError(f'Error during login: {templateModel["error"]}')
-                    if 'registerCredentialsPath' in templateModel and templateModel['registerCredentialsPath'] == 'register':
-                        raise AuthentificationError(f'Error during login, account {self.sessionuser.username} does not exist')
-                    if 'errorCode' in templateModel:
-                        raise AuthentificationError('Error during login, is the username correct?')
-                    if 'postAction' in templateModel:
-                        target = templateModel['postAction']
-                    else:
-                        raise APICompatibilityError('Form does not contain postAction')
-                elif match.groupdict()['name'] == 'csrf_token':
-                    form2Data['_csrf'] = match.groupdict()['value']
-        form2Data['password'] = self.sessionuser.password
-        if not all(x in ['_csrf', 'relayState', 'hmac', 'email', 'password'] for x in form2Data):
-            raise APICompatibilityError('Could not find all required input fields in login page')
-        LOG.info('staring with authentication 3URL')
-        login3Url = f'https://identity.vwgroup.io/signin-service/v1/{self.client_id}/{target}'
-
-        # Post form content and retrieve userId in forwarding Location
-        login3Response: requests.Response = websession.post(login3Url, headers=loginHeadersForm, data=form2Data, allow_redirects=False)
-        if login3Response.status_code not in (requests.codes['found'], requests.codes['see_other']):
-            if login3Response.status_code == requests.codes['internal_server_error']:
-                LOG.info("Retrieval error with status code %s", login3Response.status_code)
-                raise RetrievalError('Temporary server error during login')
-            raise APICompatibilityError('Forwarding expected (status code 302),'
-                                        f' but got status code {login3Response.status_code}')
-        if 'Location' not in login3Response.headers:
-            raise APICompatibilityError('No url for forwarding in response headers')
-
-        # Parse parametes from forwarding url
-        params: Dict[str, str] = dict(parse_qsl(urlsplit(login3Response.headers['Location']).query))
-
-        # Check if error
-        if 'error' in params and params['error']:
-            errorMessages: Dict[str, str] = {
-                'login.errors.password_invalid': 'Password is invalid',
-                'login.error.throttled': 'Login throttled, probably too many wrong logins. You have to wait some'
-                                         ' minutes until a new login attempt is possible'
-            }
-            if params['error'] in errorMessages:
-                error = errorMessages[params['error']]
-            else:
-                error = params['error']
-            LOG.info("problem with authentication: %s", error)
-            raise AuthentificationError(error)
-
-        # Check for user id
-        if 'userId' not in params or not params['userId']:
-            if 'updated' in params and params['updated'] == 'dataprivacy':
-                LOG.info("You have to login at myvolkswagen.de and accept the terms and conditions")
-                raise AuthentificationError('You have to login at myvolkswagen.de and accept the terms and conditions')
-            LOG.info("No user id provided")
-            raise APICompatibilityError('No user id provided')
-        self.userId = params['userId']  # pylint: disable=unused-private-member
-
-        # Now follow the forwarding until forwarding URL starts with 'weconnect://authenticated#'
-        afterLoginUrl: str = login3Response.headers['Location']
-
-        consentURL = None
-        while True:
-            if 'consent' in afterLoginUrl:
-                consentURL = afterLoginUrl
-            afterLoginResponse = self.get(afterLoginUrl, allow_redirects=False, access_type=AccessType.NONE)
-            if afterLoginResponse.status_code == requests.codes['internal_server_error']:
-                raise RetrievalError('Temporary server error during login')
-
-            if 'Location' not in afterLoginResponse.headers:
-                if consentURL is not None:
-                    LOG.info("It seems like you need to accept the terms and conditions for the MySkoda service. Visit %s", consentURL)
-                    raise AuthentificationError('It seems like you need to accept the terms and conditions for the MySkoda service.'
-                                                f' Try to visit the URL "{consentURL}" or log into the MySkoda smartphone app')
-                LOG.info("No Location for forwarding in response headers. PROBLEM..")
-                raise APICompatibilityError('No Location for forwarding in response headers')
-
-            afterLoginUrl = afterLoginResponse.headers['Location']
-
-            if afterLoginUrl.startswith(self.redirect_uri):
-                break
-
-        if afterLoginUrl.startswith(self.redirect_uri + '#'):
-            queryurl = afterLoginUrl.replace(self.redirect_uri + '#', 'https://egal?')
-        else:
-            queryurl = afterLoginUrl
-        return queryurl
-
-    def fetchTokens(
+    def fetch_tokens(
         self,
-        client,
-        authorization_response=None,
-        **kwargs
+        token_url,
+        authorization_response,
+        verifier,
+        **_
     ):
-        token_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token?systemId=' + client
+        """
+        Fetches tokens using the given token URL using the tokens from authorization response.
 
-        self.parseFromFragment(authorization_response)
+        Args:
+            token_url (str): The URL to request the tokens from.
+            authorization_response (str, optional): The authorization response containing the tokens. Defaults to None.
+            **_ : Additional keyword arguments.
 
-        if all(key in self.token for key in ('state', 'id_token', 'access_token', 'code')):
+        Returns:
+            dict: A dictionary containing the fetched tokens if successful.
+            None: If the tokens could not be fetched.
+
+        Raises:
+            TemporaryAuthenticationError: If the token request fails due to a temporary WeConnect failure.
+        """
+        # take token from authorization response (those are stored in self.token now!)
+        self.parse_from_fragment(authorization_response)
+        
+        if self.token is not None and all(key in self.token for key in ('code', 'id_token')):
+            # Generate json body for token request
             body: str = json.dumps(
                 {
-                    #'state': self.token['state'],
-                    #'id_token': self.token['id_token'],
-                    #'redirect_uri': self.redirect_uri,
-                    #'region': 'emea',
-                    #'access_token': self.token['access_token'],
-                    'authorizationCode': self.token['code'],
+                    'redirectUri': 'myskoda://redirect/login/',
+                    'code': self.token['code'],
+                    'verifier': verifier
                 })
 
-            loginHeadersForm: CaseInsensitiveDict = self.headers
-            loginHeadersForm['content-type'] = 'application/json; charset=utf-8'
+            request_headers: CaseInsensitiveDict = self.headers  # pyright: ignore reportAssignmentType
+            request_headers['accept'] = 'application/json'
+            request_headers['content-type'] = 'application/json'
 
-
-            tokenResponse = self.post(token_url, headers=loginHeadersForm, data=body, allow_redirects=False)
-            if tokenResponse.status_code != requests.codes['ok']:
-                print(tokenResponse.text)
-                LOG.info("Token response status from fetch is %s", tokenResponse.status_code)
-                raise TemporaryAuthentificationError(f'Token could not be fetched due to temporary MySkoda failure: {tokenResponse.status_code}')
-            
-            token = self.parseFromBody(tokenResponse.text)
-            self._session_tokens[client] = {}
-            self._session_tokens[client]['token_raw'] = token
-
+            # request tokens from token_url
+            token_response = self.post(token_url, headers=request_headers, data=body, allow_redirects=False,
+                                            access_type=AccessType.NONE)  # pyright: ignore reportCallIssue
+            if token_response.status_code != requests.codes['ok']:
+                raise TemporaryAuthenticationError(f'Token could not be fetched due to temporary WeConnect failure: {token_response.status_code}')
+            # parse token from response body
+            token = self.parse_from_body(token_response.text)
             return token
+        return None
 
-    def parseFromBody(self, token_response, state=None):
+    def parse_from_body(self, token_response, state=None):
+        """
+            Fix strange token naming before parsing it with OAuthlib.
+        """
         try:
+            # Tokens are in body of response in json format
             token = json.loads(token_response)
-        except json.decoder.JSONDecodeError:
-            raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: json could not be decoded')
+        except json.decoder.JSONDecodeError as err:
+            raise TemporaryAuthenticationError('Token could not be refreshed due to temporary WeConnect failure: json could not be decoded') from err
+        found_tokens: Set[str] = set()
+        # Fix token keys, we want access_token instead of accessToken
         if 'accessToken' in token:
+            found_tokens.add('accessToken')
             token['access_token'] = token.pop('accessToken')
+        # Fix token keys, we want id_token instead of idToken
         if 'idToken' in token:
+            found_tokens.add('idToken')
             token['id_token'] = token.pop('idToken')
+        # Fix token keys, we want refresh_token instead of refreshToken
         if 'refreshToken' in token:
+            found_tokens.add('refreshToken')
             token['refresh_token'] = token.pop('refreshToken')
-        fixedTokenresponse = to_unicode(json.dumps(token)).encode("utf-8")
-        return super(MySkodaSession, self).parseFromBody(token_response=fixedTokenresponse, state=state)
-    
-    def refreshTokens(
+        LOG.debug(f'Found tokens in answer: {found_tokens}')
+        # generate json from fixed dict
+        fixed_token_response = to_unicode(json.dumps(token)).encode("utf-8")
+        # Let OAuthlib parse the token
+        return super(MySkodaSession, self).parse_from_body(token_response=fixed_token_response)
+
+    def refresh_tokens(
         self,
-        client,
+        token_url,
         refresh_token=None,
         auth=None,
         timeout=None,
         headers=None,
         verify=True,
         proxies=None,
-        **kwargs
-    ): 
+        **_
+    ):
+        """
+        Refreshes the authentication tokens using the provided refresh token.
+        Args:
+            token_url (str): The URL to request new tokens from.
+            refresh_token (str, optional): The refresh token to use. Defaults to None.
+            auth (tuple, optional): Authentication credentials. Defaults to None.
+            timeout (float or tuple, optional): How long to wait for the server to send data before giving up. Defaults to None.
+            headers (dict, optional): Headers to include in the request. Defaults to None.
+            verify (bool, optional): Whether to verify the server's TLS certificate. Defaults to True.
+            proxies (dict, optional): Proxies to use for the request. Defaults to None.
+            **_ (dict): Additional arguments.
+        Raises:
+            ValueError: If no token endpoint is set for auto_refresh.
+            InsecureTransportError: If the token URL is not secure.
+            AuthenticationError: If the server requests new authorization.
+            TemporaryAuthenticationError: If the token could not be refreshed due to a temporary server failure.
+            RetrievalError: If the status code from the server is not recognized.
+        Returns:
+            dict: The new tokens.
+        """
+        LOG.info('Refreshing tokens')
+        if not token_url:
+            raise ValueError("No token endpoint set for auto_refresh.")
+
+        if not is_secure_transport(token_url):
+            raise InsecureTransportError()
+
+        refresh_token = refresh_token or self.refresh_token
+        if refresh_token is None:
+            self.login()
+            return self.token
+
+        # Generate json body for token request
+        body: str = json.dumps(
+            {
+                'token': refresh_token,
+            })
+
+        request_headers: CaseInsensitiveDict = self.headers  # pyright: ignore reportAssignmentType
+        request_headers['accept'] = 'application/json'
+        request_headers['content-type'] = 'application/json'
+
         try:
-            token_url = 'https://api.connect.skoda-auto.cz/api/v1/authentication/token/refresh?systemId=' + client
-            LOG.info('Refreshing tokens with url: %s', token_url)
-            if not token_url:
-                raise ValueError("No token endpoint set for auto_refresh.")
-
-            if not is_secure_transport(token_url):
-                raise InsecureTransportError()
-            
-            if headers is None:
-                headers = TOKEN_HEADERS.get(client)
-            
-            body: str = json.dumps(
-                    {
-                        'refreshToken': self.token['refresh_token'],
-                    })
-
-            LOG.info('Firing post request for refresh!')
-            tokenResponse = self.post(
-                token_url,
-                data=body,
-                auth=auth,
-                timeout=timeout,
-                headers=headers
-            )
-            LOG.info("TokenResponse from refresh is %s", tokenResponse.status_code)
-            if tokenResponse.status_code == requests.codes['unauthorized']:
-                raise AuthentificationError('Refreshing tokens failed: Server requests new authorization')
-            elif tokenResponse.status_code in (requests.codes['internal_server_error'], requests.codes['service_unavailable'], requests.codes['gateway_timeout']):
-                raise TemporaryAuthentificationError('Token could not be refreshed due to temporary MySkoda failure: {tokenResponse.status_code}')
-            elif tokenResponse.status_code == requests.codes['ok']:
-                LOG.info("Refresh is successful!")
-                self.revoke_token(self.token['refresh_token'], client)
-                LOG.info("Revoke old token successful!")
-                token_data = self.parseFromBody(tokenResponse.text)
-
-                self._session_tokens[client]['token_raw'] = token_data
-                self.token['client'] = client
-                if "refresh_token" not in self.token:
-                    LOG.info("No new refresh token given. Re-using old.")
-                    self.token["refresh_token"] = refresh_token
+            # request tokens from token_url
+            token_response = self.post(token_url, headers=request_headers, data=body, allow_redirects=False,
+                                            access_type=AccessType.NONE)  # pyright: ignore reportCallIssue
+            if token_response.status_code == requests.codes['ok']:
+                # parse token from response body
+                token = self.parse_from_body(token_response.text)
+                return token
+            elif token_response.status_code == requests.codes['unauthorized']:
+                LOG.info('Refreshing tokens failed: Server requests new authorization, will login now')
+                self.login()
                 return self.token
             else:
-                raise RetrievalError(f'Status Code from MySkoda while refreshing tokens was: {tokenResponse.status_code}')
-        except RemoteDisconnected as exp: 
-            LOG.info("EXCEPTION RemoteDisconnected!!! try again:")
-            self.refreshTokens(client)
-
-
-    def request(
-        self,
-        method,
-        url,
-        data=None,
-        headers=None,
-        withhold_token=False,
-        access_type=AccessType.ACCESS,
-        token=None,
-        timeout=None,
-        **kwargs
-    ):
-        """Intercept all requests and add userId if present."""
-        if not is_secure_transport(url):
-            raise InsecureTransportError()
-        if self.userId is not None:
-            headers = headers or {}
-            #headers['user-id'] = self.userId
-
-        return super(MySkodaSession, self).request(method, url, headers=headers, data=data, withhold_token=withhold_token, access_type=access_type, token=token,
-                                                   timeout=timeout, **kwargs)
+                raise TemporaryAuthenticationError(f'Token could not be fetched due to temporary MySkoda failure: {token_response.status_code}')
+        except ConnectionError:
+            self.login()
+            return self.token

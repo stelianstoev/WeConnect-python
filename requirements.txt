@@ -1,5 +1,4 @@
 requests~=2.31.0
 oauthlib~=3.2.2
-#pyjwt
-aiohttp
+pyjwt
 myskoda

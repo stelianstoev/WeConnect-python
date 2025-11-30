@@ -9,7 +9,7 @@ from oauthlib.oauth2 import InsecureTransportError
 from oauthlib.oauth2 import is_secure_transport
 
 from requests.models import CaseInsensitiveDict
-from weconnect.auth.openid_session import AccessType
+from weconnect.auth.openid_sessionVW import AccessType
 
 from weconnect.auth.vw_web_session import VWWebSession
 from weconnect.errors import AuthentificationError, RetrievalError, TemporaryAuthentificationError
@@ -197,7 +197,7 @@ class WeConnectSession(VWWebSession):
                 refresh_token = self.token.get('refresh_token')
 
         if not refresh_token:
-            raise AuthenticationError('No refresh token available. Please log in again.')
+            raise AuthentificationError('No refresh token available. Please log in again.')
 
         # Create headers matching the examples format
         tHeaders = {

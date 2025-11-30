@@ -1,34 +1,7 @@
-
-"""
-This module provides utility functions and classes for handling authentication and parsing HTML forms
-and scripts for the Volkswagen car connectivity connector.
-"""
-from __future__ import annotations
-from typing import TYPE_CHECKING
-
 import json
 import re
 from html.parser import HTMLParser
 
-if TYPE_CHECKING:
-    from typing import Optional, Dict
-
-
-def add_bearer_auth_header(token, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """
-    Adds a Bearer token to the Authorization header.
-
-    Args:
-        token (str): The Bearer token to be added to the headers.
-        headers (Optional[Dict[str, str]]): An optional dictionary of headers to which the Authorization header will be added.
-                                            If not provided, a new dictionary will be created.
-
-    Returns:
-        Dict[str, str]: The headers dictionary with the added Authorization header.
-    """
-    headers = headers or {}
-    headers['Authorization'] = f'Bearer {token}'
-    return headers
 
 def addBearerAuthHeader(token, headers=None):
     headers = headers or {}
@@ -36,15 +9,11 @@ def addBearerAuthHeader(token, headers=None):
     return headers
 
 
-
 class HTMLFormParser(HTMLParser):
-    """
-    A custom HTML parser to extract form data from HTML content.
-    """
-    def __init__(self, form_id) -> None:
+    def __init__(self, form_id):
         super().__init__()
         self._form_id = form_id
-        self._inside_form: bool = False
+        self._inside_form = False
         self.target = None
         self.data = {}
 
@@ -54,7 +23,7 @@ class HTMLFormParser(HTMLParser):
                 return attr[1]
         return None
 
-    def handle_starttag(self, tag, attrs) -> None:
+    def handle_starttag(self, tag, attrs):
         if self._inside_form and tag == 'input':
             self.handle_input(attrs)
             return
@@ -63,11 +32,11 @@ class HTMLFormParser(HTMLParser):
             self._inside_form = True
             self.target = self._get_attr(attrs, 'action')
 
-    def handle_endtag(self, tag) -> None:
+    def handle_endtag(self, tag):
         if tag == 'form' and self._inside_form:
             self._inside_form = False
 
-    def handle_input(self, attrs) -> None:
+    def handle_input(self, attrs):
         if not self._inside_form:
             return
 
@@ -79,8 +48,8 @@ class HTMLFormParser(HTMLParser):
 
 
 class ScriptFormParser(HTMLParser):
-    fields: list[str] = []
-    targetField: str = ''
+    fields = []
+    targetField = ''
 
     def __init__(self):
         super().__init__()
@@ -88,19 +57,19 @@ class ScriptFormParser(HTMLParser):
         self.data = {}
         self.target = None
 
-    def handle_starttag(self, tag, attrs) -> None:
+    def handle_starttag(self, tag, attrs):
         if not self._inside_script and tag == 'script':
             self._inside_script = True
 
-    def handle_endtag(self, tag) -> None:
+    def handle_endtag(self, tag):
         if self._inside_script and tag == 'script':
             self._inside_script = False
 
-    def handle_data(self, data) -> None:
+    def handle_data(self, data):
         if not self._inside_script:
             return
 
-        match: re.Match[str] | None = re.search(r'templateModel: (.*?),\n', data)
+        match = re.search(r'templateModel: (.*?),\n', data)
         if not match:
             return
 
@@ -114,15 +83,15 @@ class ScriptFormParser(HTMLParser):
 
 
 class CredentialsFormParser(ScriptFormParser):
-    fields: list[str] = ['relayState', 'hmac', 'registerCredentialsPath', 'error', 'errorCode']
-    targetField: str = 'postAction'
+    fields = ['relayState', 'hmac', 'registerCredentialsPath', 'error', 'errorCode']
+    targetField = 'postAction'
 
 
 class TermsAndConditionsFormParser(ScriptFormParser):
-    fields: list[str] = ['relayState', 'hmac', 'countryOfResidence', 'legalDocuments']
-    targetField: str = 'loginUrl'
+    fields = ['relayState', 'hmac', 'countryOfResidence', 'legalDocuments']
+    targetField = 'loginUrl'
 
-    def handle_data(self, data) -> None:
+    def handle_data(self, data):
         if not self._inside_script:
             return
 

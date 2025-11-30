@@ -18,7 +18,7 @@ from requests.adapters import HTTPAdapter
 
 from carconnectivity.errors import AuthenticationError, RetrievalError
 
-from weconnect.auth.auth_util import add_bearer_auth_header
+from weconnect.auth.auth_util import addBearerAuthHeader
 from weconnect.auth.helpers.blacklist_retry import BlacklistRetry
 
 if TYPE_CHECKING:
@@ -444,6 +444,6 @@ class OpenIDSession(requests.Session):
                     raise TokenExpiredError()
                 token = self.access_token
 
-        return_headers: Dict[str, str] = add_bearer_auth_header(token, headers)
+        return_headers: Dict[str, str] = addBearerAuthHeader(token, headers)
 
         return (uri, return_headers, body)

@@ -9,7 +9,7 @@ from requests.adapters import HTTPAdapter
 from requests.models import CaseInsensitiveDict
 
 from weconnect.auth.auth_util import CredentialsFormParser, HTMLFormParser, TermsAndConditionsFormParser
-from weconnect.auth.openid_session import OpenIDSessionVW
+from weconnect.auth.openid_sessionVW import OpenIDSessionVW
 from weconnect.errors import APICompatibilityError, AuthentificationError, RetrievalError
 
 

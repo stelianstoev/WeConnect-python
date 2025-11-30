@@ -9,14 +9,14 @@ from requests.adapters import HTTPAdapter
 from requests.models import CaseInsensitiveDict
 
 from weconnect.auth.auth_util import CredentialsFormParser, HTMLFormParser, TermsAndConditionsFormParser
-from weconnect.auth.openid_session import OpenIDSession
+from weconnect.auth.openid_session import OpenIDSessionVW
 from weconnect.errors import APICompatibilityError, AuthentificationError, RetrievalError
 
 
 LOG = logging.getLogger("weconnect")
 
 
-class VWWebSession(OpenIDSession):
+class VWWebSession(OpenIDSessionVW):
     def __init__(self, sessionuser, acceptTermsOnLogin=False, **kwargs):
         super(VWWebSession, self).__init__(**kwargs)
         self.sessionuser = sessionuser

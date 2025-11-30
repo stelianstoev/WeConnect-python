@@ -29,10 +29,10 @@ class AccessType(Enum):
     REFRESH = auto()
 
 
-class OpenIDSession(requests.Session):
+class OpenIDSessionVW(requests.Session):
     def __init__(self, client_id=None, redirect_uri=None, refresh_url=None, scope=None, token=None, metadata={}, state=None, timeout=None,
                  forceReloginAfter=None, **kwargs):
-        super(OpenIDSession, self).__init__(**kwargs)
+        super(OpenIDSessionVW, self).__init__(**kwargs)
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.refresh_url = refresh_url
@@ -245,7 +245,7 @@ class OpenIDSession(requests.Session):
         if timeout is None:
             timeout = self.timeout
 
-        return super(OpenIDSession, self).request(
+        return super(OpenIDSessionVW, self).request(
             method, url, headers=headers, data=data, **kwargs
         )
 

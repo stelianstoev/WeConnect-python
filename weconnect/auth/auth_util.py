@@ -30,6 +30,12 @@ def add_bearer_auth_header(token, headers: Optional[Dict[str, str]] = None) -> D
     headers['Authorization'] = f'Bearer {token}'
     return headers
 
+def addBearerAuthHeader(token, headers=None):
+    headers = headers or {}
+    headers['Authorization'] = f'Bearer {token}'
+    return headers
+
+
 
 class HTMLFormParser(HTMLParser):
     """

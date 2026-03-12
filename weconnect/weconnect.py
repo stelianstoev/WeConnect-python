@@ -46,7 +46,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         selective: Optional[list[Domain]] = None,
         forceReloginAfter: Optional[int] = None,
         acceptTermsOnLogin: Optional[bool] = False,
-        service: Service = Service.WE_CONNECT,
+        service: Service = Service.MY_SKODA,
     ) -> None:
         """Initialize WeConnect interface. If loginOnInit is true the user will be tried to login.
            If loginOnInit is true also an initial fetch of data is performed.

@@ -312,7 +312,6 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 'oilLevelStatus': GenericStatus,
                 'measurements': GenericStatus,
                 'temperatureBatteryStatus': TemperatureBatteryStatus,
-                'temperatureOutsideStatus': TemperatureOutsideStatus,
                 'fuelLevelStatus': FuelLevelStatus,
             },
             Domain.BATTERY_SUPPORT: {

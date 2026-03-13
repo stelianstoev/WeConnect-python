@@ -20,12 +20,14 @@ from weconnect.addressable import AddressableLeaf, AddressableObject, Addressabl
 from weconnect.errors import RetrievalError, TooManyRequestsError
 from weconnect.weconnect_errors import ErrorEventType
 from weconnect.util import ExtendedEncoder
+from weconnect.api.skoda_endpoints import Brand, APIEndpoints
+from weconnect.api.skoda_mapper import map_skoda_vehicle
 
 LOG = logging.getLogger("weconnect")
 
 
 class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attributes, too-many-public-methods
-    """Main class used to interact with WeConnect"""
+    """Main class used to interact with Skoda Connect (formerly WeConnect)"""
 
     def __init__(  # noqa: C901 # pylint: disable=too-many-arguments
         self,
@@ -46,30 +48,25 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         selective: Optional[list[Domain]] = None,
         forceReloginAfter: Optional[int] = None,
         acceptTermsOnLogin: Optional[bool] = False,
-        service: Service = Service.MY_SKODA,
     ) -> None:
-        """Initialize WeConnect interface. If loginOnInit is true the user will be tried to login.
-           If loginOnInit is true also an initial fetch of data is performed.
+        """Initialize Skoda Connect interface.
 
         Args:
-            username (str): Username used with WeConnect. This is your volkswagen user.
-            password (str): Password used with WeConnect. This is your volkswagen password.
+            username (str): Username used with MySkoda. This is your Skoda ID.
+            password (str): Password used with MySkoda.
             tokenfile (str, optional): Optional file to read/write token from/to. Defaults to None.
-            updateAfterLogin (bool, optional): Update data from WeConnect after logging in (If set to false, update needs to be called manually).
-            Defaults to True.
-            loginOnInit (bool, optional): Login after initialization (If set to false, login needs to be called manually). Defaults to True.
-            fixAPI (bool, optional): Automatically fix known issues with the WeConnect responses. Defaults to True.
-            proxy (str, optional): Set a proxy IP adress and port
-            maxAge (int, optional): Maximum age of the cache before date is fetched again. None means no caching. Defaults to None.
-            maxAgePictures (Optional[int], optional):  Maximum age of the pictures in the cache before date is fetched again. None means no caching.
-            Defaults to None.
-            updateCapabilities (bool, optional): Also update the information about the cars capabilities. Defaults to True.
-            updatePictures (bool, optional):  Also fetch and update pictures. Defaults to True.
-            numRetries (int, optional): Number of retries when http requests are failing. Defaults to 3.
-            timeout (bool, optional, optional): Timeout in seconds used for http connections to the VW servers
-            selective (list[Domain], optional): Domains to request data for
-            forceReloginAfter (int, optional): Force a full relogin after number of seconds. This might be necessary to get fresh data
-            service (Service, optional): The service to use (WE_CONNECT, MY_SKODA, etc.). Defaults to WE_CONNECT.
+            updateAfterLogin (bool, optional): Update data from Skoda after logging in. Defaults to True.
+            loginOnInit (bool, optional): Login after initialization. Defaults to False.
+            fixAPI (bool, optional): Automatically fix known issues with the API responses. Defaults to True.
+            proxy (str, optional): Set a proxy IP address and port
+            maxAge (int, optional): Maximum age of the cache before data is fetched again. Defaults to None.
+            maxAgePictures (Optional[int], optional): Maximum age of pictures in cache. Defaults to None.
+            updateCapabilities (bool, optional): Update car capabilities. Defaults to True.
+            updatePictures (bool, optional): Fetch and update pictures. Defaults to True.
+            numRetries (int, optional): Number of retries when http requests fail. Defaults to 3.
+            timeout (bool, optional): Timeout in seconds for connections.
+            selective (list[Domain], optional): Domains to request data for.
+            forceReloginAfter (int, optional): Force relogin after seconds.
         """
         super().__init__(localAddress='', parent=None)
         self.lock = Lock()
@@ -78,7 +75,6 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         self.spin: Union[str, bool] = spin
 
         self.__session: requests.Session = requests.Session()
-        self.__VWsession: requests.Session = requests.Session()
 
         self.__vehicles: AddressableDict[str, Vehicle] = AddressableDict(localAddress='vehicles', parent=self)
         self.__stations: AddressableDict[str, ChargingStation] = AddressableDict(localAddress='chargingStations', parent=self)
@@ -107,22 +103,13 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
 
         self.tokenfile = tokenfile
 
-        self.service = service
-        
+        # Skoda only - use MY_SKODA service
         self.__manager = SessionManager(tokenstorefile=tokenfile)
-        self.__session = self.__manager.getSession(service, SessionUser(username=username, password=password))
+        self.__session = self.__manager.getSession(Service.MY_SKODA, SessionUser(username=username, password=password))
         self.__session.proxies.update(self.proxystring)
         self.__session.timeout = timeout
         self.__session.retries = numRetries
         self.__session.forceReloginAfter = forceReloginAfter
-        self.__session.acceptTermsOnLogin = acceptTermsOnLogin
-        
-        # Only create VW session if not using MY_SKODA
-        if service != Service.MY_SKODA:
-            self.__VWsession = self.__manager.getSession(Service.WE_CONNECT, SessionUser(username=username, password=password))
-            self.__VWsession.login()
-        else:
-            self.__VWsession = None
 
         if loginOnInit:
             self.__session.login()
@@ -140,10 +127,6 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     @property
     def session(self) -> requests.Session:
         return self.__session
-    
-    @property
-    def VWsession(self) -> Optional[requests.Session]:
-        return self.__VWsession
 
     @property
     def cache(self) -> Dict[str, Any]:
@@ -201,12 +184,25 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     def login(self) -> None:
         self.__session.login()
 
-    def vwLogin(self) -> None:
-        self.__VWsession.login()
-
     @property
     def vehicles(self) -> AddressableDict[str, Vehicle]:
         return self.__vehicles
+
+    def get_garage_url(self) -> str:
+        """Get the garage API URL for Skoda."""
+        return APIEndpoints.get_full_url('vehicle', 'garage')
+
+    def get_vehicle_status_url(self, vin: str) -> str:
+        """Get the vehicle status API URL."""
+        return APIEndpoints.get_full_url('vehicle', 'vehicle_status', vin=vin)
+
+    def get_parking_position_url(self, vin: str) -> str:
+        """Get the parking position API URL."""
+        return APIEndpoints.get_full_url('vehicle', 'parking_position', vin=vin)
+
+    def get_charging_stations_url(self) -> str:
+        """Get the charging stations API URL."""
+        return APIEndpoints.get_charging_stations_url()
 
     def update(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,
                selective: Optional[list[Domain]] = None) -> None:
@@ -216,18 +212,27 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
             self.updateChargingStations(force=force)
         finally:
             self.updateComplete()
-            self.__session.cookies.clear()  # Clear cookies to have a fresh session afterwards
+            self.__session.cookies.clear()
 
     def updateVehicles(self, updateCapabilities: bool = True, updatePictures: bool = True, force: bool = False,  # noqa: C901
                        selective: Optional[list[Domain]] = None) -> None:
         with self.lock:
             catchedRetrievalError = None
-            url = 'https://emea.bff.cariad.digital/vehicle/v1/vehicles'
+            # Skoda uses garage endpoint
+            url = self.get_garage_url()
             data = self.fetchData(url, force)
             if data is not None:
-                if 'data' in data and data['data']:
+                # Skoda uses 'vehicles' key in 'garage' response
+                vehicle_list = None
+                if 'vehicles' in data and data['vehicles']:
+                    vehicle_list = data['vehicles']
+                
+                if vehicle_list:
                     vins: List[str] = []
-                    for vehicleDict in data['data']:
+                    for vehicleDict in vehicle_list:
+                        # Map Skoda response to WeConnect-Python format
+                        vehicleDict = map_skoda_vehicle(vehicleDict)
+                        
                         if 'vin' not in vehicleDict:
                             break
                         vin: str = vehicleDict['vin']
@@ -263,11 +268,19 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
     def getChargingStations(self, latitude, longitude, searchRadius=None, market=None, useLocale=None,  # noqa: C901
                             force=False) -> AddressableDict[str, ChargingStation]:
         chargingStationMap: AddressableDict[str, ChargingStation] = AddressableDict(localAddress='', parent=None)
-        
-        # Use Skoda API if service is MY_SKODA
-        if self.service == Service.MY_SKODA:
-            data = self._fetch_skoda_charging_stations(latitude, longitude, searchRadius or 5000, force)
-            if data is not None and 'chargingStations' in data:
+        base_url = self.get_charging_stations_url()
+        url: str = f'{base_url}?latitude={latitude}&longitude={longitude}'
+        if market is not None:
+            url += f'&market={market}'
+        if useLocale is not None:
+            url += f'&locale={useLocale}'
+        if searchRadius is not None:
+            url += f'&searchRadius={searchRadius}'
+        if self.session.userId is not None:
+            url += f'&userId={self.session.userId}'
+        data = self.fetchData(url, force)
+        if data is not None:
+            if 'chargingStations' in data and data['chargingStations']:
                 for stationDict in data['chargingStations']:
                     if 'id' not in stationDict:
                         break
@@ -275,65 +288,23 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                     station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
                                                                fixAPI=self.fixAPI)
                     chargingStationMap[stationId] = station
-                return chargingStationMap
-        else:
-            # Use VW API
-            url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={latitude}&longitude={longitude}'
-            if market is not None:
-                url += f'&market={market}'
-            if useLocale is not None:
-                url += f'&locale={useLocale}'
-            if searchRadius is not None:
-                url += f'&searchRadius={searchRadius}'
-            if self.VWsession is not None and self.VWsession.userId is not None:
-                url += f'&userId={self.VWsession.userId}'
-            data = self.fetchDataVW(url, force)
-            if data is not None:
-                if 'chargingStations' in data and data['chargingStations']:
-                    for stationDict in data['chargingStations']:
-                        if 'id' not in stationDict:
-                            break
-                        stationId: str = stationDict['id']
-                        station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
-                                                                   fixAPI=self.fixAPI)
-                        chargingStationMap[stationId] = station
 
-                    self.__cache[url] = (data, str(datetime.utcnow()))
+                self.__cache[url] = (data, str(datetime.utcnow()))
         return chargingStationMap
 
     def updateChargingStations(self, force: bool = False) -> None:  # noqa: C901 # pylint: disable=too-many-branches
         if self.latitude is not None and self.longitude is not None:
-            # Use Skoda API if service is MY_SKODA
-            if self.service == Service.MY_SKODA:
-                data = self._fetch_skoda_charging_stations(self.latitude, self.longitude, self.searchRadius or 5000, force)
-                if data is not None and 'chargingStations' in data:
-                    ids: List[str] = []
-                    for stationDict in data['chargingStations']:
-                        if 'id' not in stationDict:
-                            break
-                        stationId: str = stationDict['id']
-                        ids.append(stationId)
-                        if stationId not in self.__stations:
-                            station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=self.__stations, fromDict=stationDict,
-                                                                       fixAPI=self.fixAPI)
-                            self.__stations[stationId] = station
-                        else:
-                            self.__stations[stationId].update(fromDict=stationDict)
-                    # delete those stations that are not anymore available
-                    for stationId in [stationId for stationId in ids if stationId not in self.__stations]:
-                        del self.__stations[stationId]
-            else:
-                # Use VW API
-                url: str = f'https://emea.bff.cariad.digital/poi/charging-stations/v2?latitude={self.latitude}&longitude={self.longitude}'
-                if self.market is not None:
-                    url += f'&market={self.market}'
-                if self.useLocale is not None:
-                    url += f'&locale={self.useLocale}'
-                if self.searchRadius is not None:
-                    url += f'&searchRadius={self.searchRadius}'
-                if self.VWsession is not None and self.VWsession.userId is not None:
-                    url += f'&userId={self.VWsession.userId}'
-                data = self.fetchDataVW(url, force)
+            base_url = self.get_charging_stations_url()
+            url: str = f'{base_url}?latitude={self.latitude}&longitude={self.longitude}'
+            if self.market is not None:
+                url += f'&market={self.market}'
+            if self.useLocale is not None:
+                url += f'&locale={self.useLocale}'
+            if self.searchRadius is not None:
+                url += f'&searchRadius={self.searchRadius}'
+            if self.session.userId is not None:
+                url += f'&userId={self.session.userId}'
+            data = self.fetchData(url, force)
             if data is not None:
                 if 'chargingStations' in data and data['chargingStations']:
                     ids: List[str] = []
@@ -348,7 +319,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                             self.__stations[stationId] = station
                         else:
                             self.__stations[stationId].update(fromDict=stationDict)
-                    # delete those vins that are not anymore available
+                    # delete those station IDs that are not available anymore
                     for stationId in [stationId for stationId in ids if stationId not in self.__stations]:
                         del self.__stations[stationId]
 
@@ -365,7 +336,7 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         returnString: str = ''
         for vin, vehicle in self.__vehicles.items():
             returnString += f'Vehicle: {vin}\n{vehicle}\n'
-        for stationId, station in sorted(self.__stations.items(), key=lambda x: x[1].distance.value, reverse=False):
+        for stationId, station in sorted(self.__stations.items(), key=lambda x: x[1].distance.value if x[1].distance.value is not None else -1, reverse=False):
             returnString += f'Charging Station: {stationId}\n{station}\n'
         return returnString
 
@@ -442,135 +413,6 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                     LOG.info('Server asks for new authorization')
                     self.login()
                     statusResponse = self.session.get(url, allow_redirects=False)
-                    self.recordElapsed(statusResponse.elapsed)
-
-                    if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
-                        data = statusResponse.json()
-                        if self.cache is not None:
-                            self.cache[url] = (data, str(datetime.utcnow()))
-                    elif not allowHttpError or (allowedErrors is not None and statusResponse.status_code not in allowedErrors):
-                        self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code), 'Could not fetch data due to server error')
-                        raise RetrievalError(f'Could not fetch data even after re-authorization. Status Code was: {statusResponse.status_code}')
-                elif not allowHttpError or (allowedErrors is not None and statusResponse.status_code not in allowedErrors):
-                    self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code), 'Could not fetch data due to server error')
-                    raise RetrievalError(f'Could not fetch data. Status Code was: {statusResponse.status_code}')
-            except requests.exceptions.ConnectionError as connectionError:
-                self.notifyError(self, ErrorEventType.CONNECTION, 'connection', 'Could not fetch data due to connection problem')
-                raise RetrievalError from connectionError
-            except requests.exceptions.ChunkedEncodingError as chunkedEncodingError:
-                self.notifyError(self, ErrorEventType.CONNECTION, 'chunked encoding error',
-                                 'Could not fetch data due to connection problem with chunked encoding')
-                raise RetrievalError from chunkedEncodingError
-            except requests.exceptions.ReadTimeout as timeoutError:
-                self.notifyError(self, ErrorEventType.TIMEOUT, 'timeout', 'Could not fetch data due to timeout')
-                raise RetrievalError from timeoutError
-            except requests.exceptions.RetryError as retryError:
-                raise RetrievalError from retryError
-            except requests.exceptions.JSONDecodeError as jsonError:
-                if allowEmpty:
-                    data = None
-                else:
-                    self.notifyError(self, ErrorEventType.JSON, 'json', 'Could not fetch data due to error in returned data')
-                    raise RetrievalError from jsonError
-        return data
-
-    def _fetch_skoda_charging_stations(self, latitude: float, longitude: float, radius: int, force=False) -> Optional[Dict[str, Any]]:
-        """Fetch charging stations using Skoda API."""
-        url = 'https://mysmob.api.connect.skoda-auto.cz/api/v3/maps/nearby-places'
-        post_data = {
-            "placeTypes": ["CHARGING_STATION"],
-            "location": {"latitude": latitude, "longitude": longitude},
-            "radiusInMeters": radius,
-            "requirements": {},
-        }
-        
-        cache_key = f"skoda_charging_{latitude}_{longitude}_{radius}"
-        
-        # Check cache
-        if not force and self.maxAge is not None and self.cache is not None and cache_key in self.cache:
-            data, cacheDateString = self.cache[cache_key]
-            cacheDate = datetime.fromisoformat(cacheDateString)
-            if cacheDate >= (datetime.utcnow() - timedelta(seconds=self.maxAge)):
-                return data
-        
-        try:
-            response = self.session.post(url, json=post_data, allow_redirects=False)
-            if response.status_code == requests.codes['ok']:
-                skoda_data = response.json()
-                
-                # Convert Skoda response to WeConnect-Python format
-                result = {'chargingStations': []}
-                if 'nearbyPlaces' in skoda_data:
-                    for place in skoda_data['nearbyPlaces']:
-                        station = {
-                            'id': place.get('id', ''),
-                            'name': place.get('name', ''),
-                            'latitude': place.get('location', {}).get('latitude'),
-                            'longitude': place.get('location', {}).get('longitude'),
-                        }
-                        # Add address
-                        if 'address' in place:
-                            addr = place['address']
-                            address_parts = []
-                            if 'street' in addr:
-                                address_parts.append(addr['street'])
-                            if 'houseNumber' in addr:
-                                address_parts[-1] += f" {addr['houseNumber']}"
-                            if 'zipCode' in addr:
-                                address_parts.append(addr['zipCode'])
-                            if 'city' in addr:
-                                address_parts.append(addr['city'])
-                            station['address'] = ', '.join(address_parts)
-                        
-                        # Add charging info
-                        if 'chargingStation' in place:
-                            cs = place['chargingStation']
-                            station['chargingPoints'] = []
-                            if 'totalCountChargingPoints' in cs:
-                                station['chargingPoints'].append({
-                                    'maxPowerInKw': cs.get('maxElectricPowerInKw', 0),
-                                    'chargingStationId': place.get('id', ''),
-                                    'connectors': [{'id': '1', 'status': 'Available'}]  # Default status
-                                })
-                        
-                        result['chargingStations'].append(station)
-                
-                # Cache the result
-                if self.cache is not None:
-                    self.cache[cache_key] = (result, str(datetime.utcnow()))
-                
-                return result
-            else:
-                LOG.warning(f'Failed to fetch Skoda charging stations: {response.status_code}')
-        except Exception as e:
-            LOG.error(f'Error fetching Skoda charging stations: {e}')
-        
-        return None
-
-    def fetchDataVW(self, url, force=False, allowEmpty=False, allowHttpError=False, allowedErrors=None) -> Optional[Dict[str, Any]]:  # noqa: C901
-        data: Optional[Dict[str, Any]] = None
-        cacheDate: Optional[datetime] = None
-        if not force and (self.maxAge is not None and self.cache is not None and url in self.cache):
-            data, cacheDateString = self.cache[url]
-            cacheDate = datetime.fromisoformat(cacheDateString)
-        if data is None or self.maxAge is None \
-                or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.maxAge))):
-            try:
-                statusResponse: requests.Response = self.VWsession.get(url, allow_redirects=False)
-                self.recordElapsed(statusResponse.elapsed)
-                if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):
-                    data = statusResponse.json()
-                    if self.cache is not None:
-                        self.cache[url] = (data, str(datetime.utcnow()))
-                elif statusResponse.status_code == requests.codes['too_many_requests']:
-                    self.notifyError(self, ErrorEventType.HTTP, str(statusResponse.status_code),
-                                     'Could not fetch data due to too many requests from your account')
-                    raise TooManyRequestsError('Could not fetch data due to too many requests from your account. '
-                                               f'Status Code was: {statusResponse.status_code}')
-                elif statusResponse.status_code == requests.codes['unauthorized']:
-                    LOG.info('Server asks for new authorization')
-                    self.vwLogin()
-                    statusResponse = self.VWsession.get(url, allow_redirects=False)
                     self.recordElapsed(statusResponse.elapsed)
 
                     if statusResponse.status_code in (requests.codes['ok'], requests.codes['multiple_status']):

@@ -1,9 +1,8 @@
 """
-Module implements a VW Web session.
+Module implements Skoda web session handling.
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING
-
 
 from urllib.parse import parse_qsl, urlparse, urlsplit, urljoin
 
@@ -13,7 +12,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.models import CaseInsensitiveDict
 
-from carconnectivity.errors import APICompatibilityError, AuthenticationError, RetrievalError
+from weconnect.errors import APICompatibilityError, AuthentificationError, RetrievalError
 
 from weconnect.auth.auth_util import CredentialsFormParser, HTMLFormParser, TermsAndConditionsFormParser
 from weconnect.auth.openid_session import OpenIDSession
@@ -26,13 +25,12 @@ class SkodaWebSession(OpenIDSession):
     """
     SkodaWebSession handles the web authentication process for Skoda's web services.
     """
-    def __init__(self, session_user, cache, accept_terms_on_login=False, **kwargs):
+    def __init__(self, session_user=None, cache=None, accept_terms_on_login=False, **kwargs):
         super(SkodaWebSession, self).__init__(**kwargs)
         self.session_user = session_user
         self.cache = cache
         self.accept_terms_on_login: bool = accept_terms_on_login
 
-        # Set up the web session
         retries = Retry(
             total=self.retries,
             backoff_factor=0.1,
@@ -55,46 +53,18 @@ class SkodaWebSession(OpenIDSession):
         })
 
     def do_web_auth(self, url: str) -> str:
-        """
-        Perform web authentication using the provided URL.
-
-        This method handles the web authentication process by:
-        1. Retrieving the login form.
-        2. Setting the email to the provided username.
-        3. Retrieving the password form.
-        4. Setting the credentials (email and password).
-        5. Logging in and getting the redirect URL.
-        6. Checking the URL for terms and conditions and handling consent if required.
-        7. Following redirects until the final URL is reached.
-
-        Args:
-            url (str): The URL to start the authentication process.
-
-        Returns:
-            str: The final URL after successful authentication.
-
-        Raises:
-            AuthenticationError: If terms and conditions need to be accepted.
-            RetrievalError: If there is a temporary server error during login.
-            APICompatibilityError: If forwarding occurs without 'Location' in headers.
-        """
-        # Get the login form
         email_form: HTMLFormParser = self._get_login_form(url)
 
-        # Set email to the provided username
         email_form.data['email'] = self.session_user.username
 
-        # Get password form
         password_form = self._get_password_form(
             urljoin('https://identity.vwgroup.io', email_form.target),
             email_form.data
         )
 
-        # Set credentials
         password_form.data['email'] = self.session_user.username
         password_form.data['password'] = self.session_user.password
 
-        # Log in and get the redirect URL
         url = self._handle_login(
             f'https://identity.vwgroup.io/signin-service/v1/{self.client_id}/{password_form.target}',
             password_form.data
@@ -102,7 +72,6 @@ class SkodaWebSession(OpenIDSession):
 
         if self.redirect_uri is None:
             raise ValueError('Redirect URI is not set')
-        # Check URL for terms and conditions
         while True:
             if url.startswith(self.redirect_uri):
                 break
@@ -113,7 +82,7 @@ class SkodaWebSession(OpenIDSession):
                 if self.accept_terms_on_login:
                     url = self._handle_consent_form(url)
                 else:
-                    raise AuthenticationError(f'It seems like you need to accept the terms and conditions. '
+                    raise AuthentificationError(f'It seems like you need to accept the terms and conditions. '
                                               f'Try to visit the URL "{url}" or log into smartphone app.')
 
             response = self.websession.get(url, allow_redirects=False)
@@ -122,7 +91,7 @@ class SkodaWebSession(OpenIDSession):
 
             if 'Location' not in response.headers:
                 if 'consent' in url:
-                    raise AuthenticationError('Could not find Location in headers, probably due to missing consent. Try visiting: ' + url)
+                    raise AuthentificationError('Could not find Location in headers, probably due to missing consent. Try visiting: ' + url)
                 raise APICompatibilityError('Forwarding without Location in headers')
 
             url = response.headers['Location']
@@ -145,7 +114,6 @@ class SkodaWebSession(OpenIDSession):
             raise APICompatibilityError(f'Retrieving login page was not successful, '
                                         f'status code: {response.status_code}')
 
-        # Find login form on page to obtain inputs
         email_form = HTMLFormParser(form_id='emailPasswordForm')
         email_form.feed(response.text)
 
@@ -160,7 +128,6 @@ class SkodaWebSession(OpenIDSession):
             raise APICompatibilityError(f'Retrieving credentials page was not successful, '
                                         f'status code: {response.status_code}')
 
-        # Find login form on page to obtain inputs
         credentials_form = CredentialsFormParser()
         credentials_form.feed(response.text)
 
@@ -169,14 +136,14 @@ class SkodaWebSession(OpenIDSession):
 
         if credentials_form.data.get('error', None) is not None:
             if credentials_form.data['error'] == 'validator.email.invalid':
-                raise AuthenticationError('Error during login, email invalid')
-            raise AuthenticationError(f'Error during login: {credentials_form.data["error"]}')
+                raise AuthentificationError('Error during login, email invalid')
+            raise AuthentificationError(f'Error during login: {credentials_form.data["error"]}')
 
         if 'errorCode' in credentials_form.data:
-            raise AuthenticationError('Error during login, is the username correct?')
+            raise AuthentificationError('Error during login, is the username correct?')
 
         if credentials_form.data.get('registerCredentialsPath', None) == 'register':
-            raise AuthenticationError(f'Error during login, account {self.session_user.username} does not exist')
+            raise AuthentificationError(f'Error during login, account {self.session_user.username} does not exist')
 
         return credentials_form
 
@@ -193,10 +160,8 @@ class SkodaWebSession(OpenIDSession):
         if 'Location' not in response.headers:
             raise APICompatibilityError('Forwarding without Location in headers')
 
-        # Parse parameters from forwarding url
         params: Dict[str, str] = dict(parse_qsl(urlsplit(response.headers['Location']).query))
 
-        # Check for login error
         if 'error' in params and params['error']:
             error_messages: Dict[str, str] = {
                 'login.errors.password_invalid': 'Password is invalid',
@@ -204,15 +169,14 @@ class SkodaWebSession(OpenIDSession):
                                          'a few minutes until a new login attempt is possible'
             }
 
-            raise AuthenticationError(error_messages.get(params['error'], params['error']))
+            raise AuthentificationError(error_messages.get(params['error'], params['error']))
 
-        # Check for user ID
         if 'userId' not in params or not params['userId']:
             if 'updated' in params and params['updated'] == 'dataprivacy':
-                raise AuthenticationError('You have to login at myvolkswagen.de and accept the terms and conditions')
+                raise AuthentificationError('You have to login at myvolkswagen.de and accept the terms and conditions')
             raise APICompatibilityError('No user ID provided')
 
-        self.user_id = params['userId']  # pylint: disable=unused-private-member
+        self.userId = params['userId']
         return response.headers['Location']
 
     def _handle_consent_form(self, url: str) -> str:
@@ -220,11 +184,9 @@ class SkodaWebSession(OpenIDSession):
         if response.status_code == requests.codes['internal_server_error']:
             raise RetrievalError('Temporary server error during login')
 
-        # Find form on page to obtain inputs
         tc_form = TermsAndConditionsFormParser()
         tc_form.feed(response.text)
 
-        # Remove query from URL
         url = urlparse(response.url)._replace(query='').geturl()
 
         response = self.websession.post(url, data=tc_form.data, allow_redirects=False)

@@ -46,6 +46,7 @@ from weconnect.elements.odometer_measurement import OdometerMeasurement
 from weconnect.elements.range_measurements import RangeMeasurements
 from weconnect.elements.readiness_status import ReadinessStatus
 from weconnect.elements.temperature_battery_status import TemperatureBatteryStatus
+from weconnect.elements.temperature_outside_status import TemperatureOutsideStatus
 from weconnect.elements.charging_profiles import ChargingProfiles
 from weconnect.elements.trip import Trip
 from weconnect.errors import APICompatibilityError, RetrievalError, APIError, TooManyRequestsError
@@ -53,8 +54,6 @@ from weconnect.util import toBool
 from weconnect.weconnect_errors import ErrorEventType
 from weconnect.domain import Domain
 from weconnect.elements.error import Error
-
-import requests
 
 from weconnect.elements.helpers.request_tracker import RequestTracker
 
@@ -312,6 +311,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                 'oilLevelStatus': GenericStatus,
                 'measurements': GenericStatus,
                 'temperatureBatteryStatus': TemperatureBatteryStatus,
+                'temperatureOutsideStatus': TemperatureOutsideStatus,
                 'fuelLevelStatus': FuelLevelStatus,
             },
             Domain.BATTERY_SUPPORT: {
@@ -424,49 +424,53 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         if not SUPPORT_IMAGES:
             return
         with self.lock:
-            url: str = f'https://mysmob.api.connect.skoda-auto.cz/api/v1/vehicle-information/{self.vin.value}/renders'
+            url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
             data = self.weConnect.fetchData(url, allowHttpError=True)
-            if data is not None and 'compositeRenders' in data:  # pylint: disable=too-many-nested-blocks
-                for image in data['compositeRenders']:
-                    if 'layers' not in image or image['layers'] is None or len(image['layers']) == 0:
-                        continue
-                    image_url: Optional[str] = None
-                    for layer in image['layers']:
-                        if 'url' in layer and layer['url'] is not None:
-                            image_url = layer['url']
-                            break
-                    if image_url is None:
-                        continue
+            if data is not None and 'data' in data:  # pylint: disable=too-many-nested-blocks
+                for image in data['data']:
                     img = None
-                    cache_date = None
-                    if self.weConnect.maxAgePictures and self.weConnect.cache is not None and image_url in self.weConnect.cache:
-                        img, cache_date_string = self.weConnect.cache[image_url]
-                        img = base64.b64decode(img)  # pyright: ignore[reportPossiblyUnboundVariable]
-                        img = Image.open(io.BytesIO(img))  # pyright: ignore[reportPossiblyUnboundVariable]
-                        cache_date = datetime.fromisoformat(cache_date_string)
+                    cacheDate = None
+                    imageurl: str = image['url']
+                    if self.weConnect.maxAgePictures is not None and self.weConnect.cache is not None and imageurl in self.weConnect.cache:
+                        img, cacheDateString = self.weConnect.cache[imageurl]
+                        img = base64.b64decode(img)
+                        img = Image.open(io.BytesIO(img))
+                        cacheDate = datetime.fromisoformat(cacheDateString)
                     if img is None or self.weConnect.maxAgePictures is None \
-                            or (cache_date is not None and cache_date < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
+                            or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
                         try:
-                            imageDownloadResponse = requests.get(image_url, stream=True)
+                            imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
+                            self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
                             if imageDownloadResponse.status_code == codes['ok']:
                                 img = Image.open(imageDownloadResponse.raw)
                                 if self.weConnect.cache is not None:
                                     buffered = io.BytesIO()
                                     img.save(buffered, format="PNG")
                                     imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                    self.weConnect.cache[image_url] = (imgStr, str(datetime.utcnow()))
+                                    self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
                             elif imageDownloadResponse.status_code == codes['unauthorized']:
                                 LOG.info('Server asks for new authorization')
                                 self.weConnect.login()
-                                imageDownloadResponse = self.weConnect.session.get(image_url, stream=True)
-                                #self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
+                                imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
+                                self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
                                 if imageDownloadResponse.status_code == codes['ok']:
                                     img = Image.open(imageDownloadResponse.raw)
                                     if self.weConnect.cache is not None:
                                         buffered = io.BytesIO()
                                         img.save(buffered, format="PNG")
                                         imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                        self.weConnect.cache[image_url] = (imgStr, str(datetime.utcnow()))
+                                        self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
+                                else:
+                                    self.weConnect.notifyError(self, ErrorEventType.HTTP, str(imageDownloadResponse.status_code),
+                                                               'Could not fetch vehicle image due to server error')
+                                    raise RetrievalError('Could not retrieve vehicle image even after re-authorization.'
+                                                         f' Status Code was: {imageDownloadResponse.status_code}')
+                                self.weConnect.notifyError(self, ErrorEventType.HTTP, str(imageDownloadResponse.status_code),
+                                                           'Could not fetch vehicle image due to server error')
+                                raise RetrievalError(f'Could not retrieve vehicle image. Status Code was: {imageDownloadResponse.status_code}')
+                            else:
+                                LOG.warning('Failed downloading picture %s with status code %d will try again in next update', image['id'],
+                                            imageDownloadResponse.status_code)
                         except exceptions.ConnectionError as connectionError:
                             self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',
                                                        'Could not fetch vehicle image due to connection problem')
@@ -482,12 +486,12 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                             raise RetrievalError from retryError
 
                     if img is not None:
-                        self.__carImages[image['viewType']] = img
-                        if image['viewType'] == 'UNMODIFIED_EXTERIOR_FRONT':
+                        self.__carImages[image['id']] = img
+                        if image['id'] == 'car_34view':
                             if 'car' in self.pictures:
-                                self.pictures['car'].setValueWithCarTime(self.__carImages['UNMODIFIED_EXTERIOR_FRONT'], lastUpdateFromCar=None, fromServer=True)
+                                self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
                             else:
-                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['UNMODIFIED_EXTERIOR_FRONT'],
+                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['car_34view'],
                                                                             valueType=Image.Image)
 
                 self.updateStatusPicture()
@@ -495,8 +499,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
     def updateStatusPicture(self) -> None:  # noqa: C901
         if not SUPPORT_IMAGES:
             return
-        if 'UNMODIFIED_EXTERIOR_FRONT' in self.__carImages:
-            img: Image = self.__carImages['UNMODIFIED_EXTERIOR_FRONT']
+        if 'car_birdview' in self.__carImages:
+            img: Image = self.__carImages['car_birdview']
 
             badges: Set[Vehicle.Badge] = set()
 

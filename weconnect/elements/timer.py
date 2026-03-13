@@ -83,13 +83,14 @@ class Timer(AddressableObject):
             fromDict=None,
         ):
             super().__init__(localAddress=localAddress, parent=parent)
-            self.startTime = AddressableAttribute(
-                localAddress='startTime', parent=self, value=None, valueType=datetime)
+            self.startTime = AddressableAttribute(localAddress='startTime', parent=self, value=None, valueType=datetime)
+            self.targetTime = AddressableAttribute(localAddress='targetTime', parent=self, value=None, valueType=datetime)
             self.recurringOn = AddressableDict(localAddress='recurringOn', parent=self)
+            self.repetitionDays = AddressableDict(localAddress='repetitionDays', parent=self)
             if fromDict is not None:
                 self.update(fromDict)
 
-        def update(self, fromDict):
+        def update(self, fromDict):  # noqa: C901
             LOG.debug('Update recurring timer from dict')
 
             if 'startTime' in fromDict:
@@ -97,6 +98,12 @@ class Timer(AddressableObject):
                                                    lastUpdateFromCar=None, fromServer=True)
             else:
                 self.startTime.enabled = False
+
+            if 'targetTime' in fromDict:
+                self.targetTime.setValueWithCarTime(datetime.strptime(f'{fromDict["targetTime"]}+00:00', '%H:%M%z'),
+                                                    lastUpdateFromCar=None, fromServer=True)
+            else:
+                self.targetTime.enabled = False
 
             if 'recurringOn' in fromDict and fromDict['recurringOn'] is not None:
                 for day, state in fromDict['recurringOn'].items():
@@ -111,14 +118,34 @@ class Timer(AddressableObject):
                 self.recurringOn.clear()
                 self.recurringOn.enabled = False
 
+            if 'repetitionDays' in fromDict and fromDict['repetitionDays'] is not None:
+                for day in fromDict['repetitionDays']:
+                    if day in self.repetitionDays:
+                        self.repetitionDays[day].setValueWithCarTime(state, lastUpdateFromCar=None, fromServer=True)
+                    else:
+                        self.repetitionDays[day] = AddressableAttribute(
+                            localAddress=day, parent=self.repetitionDays, value=state, valueType=bool)
+                for day in [day for day in self.repetitionDays.keys() if day not in fromDict['repetitionDays']]:
+                    del self.repetitionDays[day]
+            else:
+                self.repetitionDays.clear()
+                self.repetitionDays.enabled = False
+
             for key, value in {key: value for key, value in fromDict.items()
-                               if key not in ['startTime', 'recurringOn']}.items():
+                               if key not in ['startTime', 'targetTime', 'recurringOn', 'repetitionDays']}.items():
                 LOG.warning('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
         def __str__(self):
-            string = f'{self.startTime.value.strftime("%H:%M")} on '  # pylint: disable=no-member
-            for day, value in self.recurringOn.items():
-                if value:
+            if self.startTime.enabled:
+                string = f'{self.startTime.value.strftime("%H:%M")} on '  # pylint: disable=no-member
+            if self.targetTime.enabled:
+                string = f'{self.startTime.value.strftime("%H:%M")} on '  # pylint: disable=no-member
+            if len(self.recurringOn):
+                for day, value in self.recurringOn.items():
+                    if value:
+                        string += day + ' '
+            elif len(self.repetitionDays):
+                for day in self.repetitionDays:
                     string += day + ' '
             return string
 
@@ -132,8 +159,12 @@ class Timer(AddressableObject):
             super().__init__(localAddress=localAddress, parent=parent)
             self.startDateTime = AddressableAttribute(
                 localAddress='startDateTime', parent=self, value=None, valueType=datetime)
+            self.targetDateTime = AddressableAttribute(
+                localAddress='targetDateTime', parent=self, value=None, valueType=datetime)
             self.startDateTimeLocal = AddressableAttribute(
                 localAddress='startDateTimeLocal', parent=self, value=None, valueType=datetime)
+            self.targetDateTimeLocal = AddressableAttribute(
+                localAddress='targetDateTimeLocal', parent=self, value=None, valueType=datetime)
             self.occurringOn = AddressableAttribute(
                 localAddress='occurringOn', parent=self, value=None, valueType=str)
             self.startTime = AddressableAttribute(
@@ -149,11 +180,20 @@ class Timer(AddressableObject):
             else:
                 self.startDateTime.enabled = False
 
+            if 'targetDateTime' in fromDict:
+                self.targetDateTime.setValueWithCarTime(robustTimeParse(fromDict["targetDateTime"]), lastUpdateFromCar=None, fromServer=True)
+            else:
+                self.targetDateTime.enabled = False
+
             if 'startDateTimeLocal' in fromDict:
                 self.startDateTimeLocal.setValueWithCarTime(robustTimeParse(fromDict["startDateTimeLocal"]), lastUpdateFromCar=None, fromServer=True)
             else:
                 self.startDateTimeLocal.enabled = False
 
+            if 'targetDateTimeLocal' in fromDict:
+                self.targetDateTimeLocal.setValueWithCarTime(robustTimeParse(fromDict["targetDateTimeLocal"]), lastUpdateFromCar=None, fromServer=True)
+            else:
+                self.targetDateTimeLocal.enabled = False
             self.occurringOn.fromDict(fromDict, 'occurringOn')
 
             if 'startTime' in fromDict:
@@ -163,7 +203,12 @@ class Timer(AddressableObject):
                 self.startTime.enabled = False
 
             for key, value in {key: value for key, value in fromDict.items()
-                               if key not in ['startDateTime', 'startDateTimeLocal', 'occurringOn', 'startTime']}.items():
+                               if key not in ['startDateTime',
+                                              'targetDateTime',
+                                              'startDateTimeLocal',
+                                              'targetDateTimeLocal',
+                                              'occurringOn',
+                                              'startTime']}.items():
                 LOG.warning('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
         def __str__(self):
@@ -172,6 +217,10 @@ class Timer(AddressableObject):
                 returnString += self.startDateTime.value.isoformat()  # pylint: disable=no-member
             elif self.startDateTimeLocal.enabled:
                 returnString += self.startDateTimeLocal.value.isoformat()  # pylint: disable=no-member
+            if self.targetDateTime.enabled:
+                returnString += self.targetDateTime.value.isoformat()  # pylint: disable=no-member
+            elif self.targetDateTimeLocal.enabled:
+                returnString += self.targetDateTimeLocal.value.isoformat()  # pylint: disable=no-member
             if self.occurringOn.enabled:
                 returnString += self.occurringOn.value
             if self.startTime.enabled:

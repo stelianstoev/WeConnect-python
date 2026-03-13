@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 - No unreleased changes so far
 
+## [0.60.11] - 2025-11-30
+### Fixed
+- Fixes typo from backporting AuthentificationError/AuthenticationError
+
+## [0.60.10] - 2025-11-29
+### Fixed
+- Fixes refresh token handling that was broken in 0.60.9 due to typo when backporting changes
+
+## [0.60.9] - 2025-11-29
+### Fixed
+- Fixes login due to changes in the login form
+
+## [0.60.8] - 2025-01-08
+### Fixed
+- Fixes web authentication for some users
+- big refactoring of web auth (thank you to user [krzysdabro](https://github.com/krzysdabro) for the contribution!)
+
+## [0.60.7] - 2024-12-19
+### Fixed
+- Fix for reoccuring consent requests
+
+### Added
+- Warning light color white
+
+## [0.60.6] - 2024-12-06
+### Fixed
+- Fixed error message when new terms and conditions need to be accepted
+
+## [0.60.5] - 2024-09-13
+### Added
+- AUTHTYPE PROPRIETARY added
+- ChargingScenarios IMMEDIATELY_CHARGING_ACTIVE, IMMEDIATELY_CHARGING_FINISHED, CHARGING_TO_DEPARTURE_TIME_WAITING, CHARGING_TO_DEPARTURE_TIME_ACTIVE, OPTIMISED_CHARGING_FINISHED, ERROR_CHARGING_SYSTEM added
+- climatisationTemperatureOutside added (for now only error shown due to missing support in cars firmware)
+
+## [0.60.4] - 2024-08-02
+### Added
+- usePrivateCurrentEnabled added
+- maxChargeCurrentAC_A added
+- self.chargingScenario added
+- self.targetDateTimeLocal added
+- ICON_NOT_FOUND added
+
+### Changed
+- Updated pillow dependency to 10.4.0
+
+## [0.60.3] - 2024-06-13
+### Added
+- ChargeType UNSUPPORTED added
+- TargetSOCReachable reachable, notReachable added
+- Warning light category OTHER added
+- navigationTargetSOC_pct added (Thanks to User @Lake292 for the contribution)
+- TemperatureOutsideStatus added (Thanks to User @Lake292 for the contribution)
+
+### Changed
+- Updated pillow dependency to 10.3.0
+- Updated requests dependency to 2.32.3
+
+## [0.60.2] - 2024-02-28
+### Fixed
+- Fixes a bug introduced by the new timers attributes
+
+## [0.60.1] - 2024-02-27
+### Added
+- Added new departure timer attributes
+
+## [0.60.0] - 2024-02-26
+### Fixed
+- Fixes a bug in activeVentilation and auxiliaryHeating controls
+- Problem showing error related to miles/km conversion fixed
+- Problem with RGBA conversion fixed
+
+### Added
+- AuxiliaryHeatingStatus added
+- Several new Attributes added
+
+### Changed
+- Updated pillow dependency to 10.2.0, fixing potential security issue
+- Updated several dependencies
+
 ## [0.59.5] - 2023-11-15
 ### Fixed
 - Fixes a bug in activeVentilation and auxiliaryHeating controls
@@ -811,7 +890,19 @@ Minor fix in observer interface
 ## [0.1.0] - 2021-05-26
 Initial release
 
-[unreleased]: https://github.com/tillsteinbach/WeConnect-python/compare/v0.59.5...HEAD
+[unreleased]: https://github.com/tillsteinbach/WeConnect-python/compare/v0.60.11...HEAD
+[0.60.11]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.11
+[0.60.10]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.10
+[0.60.9]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.9
+[0.60.8]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.8
+[0.60.7]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.7
+[0.60.6]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.6
+[0.60.5]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.5
+[0.60.4]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.4
+[0.60.3]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.3
+[0.60.2]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.2
+[0.60.1]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.1
+[0.60.0]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.60.0
 [0.59.5]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.59.5
 [0.59.4]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.59.4
 [0.59.3]: https://github.com/tillsteinbach/WeConnect-python/releases/tag/v0.59.3

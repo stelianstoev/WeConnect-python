@@ -17,6 +17,8 @@ class BatteryStatus(GenericStatus):
     ):
         self.currentSOC_pct = AddressableAttribute(
             localAddress='currentSOC_pct', parent=self, value=None, valueType=int)
+        self.navigationTargetSOC_pct = AddressableAttribute(
+            localAddress='navigationTargetSOC_pct', parent=self, value=None, valueType=int)
         self.cruisingRangeElectric_km = AddressableAttribute(
             localAddress='cruisingRangeElectric_km', value=None, parent=self, valueType=int)
         super().__init__(vehicle=vehicle, parent=parent, statusId=statusId, fromDict=fromDict, fixAPI=fixAPI)
@@ -25,10 +27,9 @@ class BatteryStatus(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update battery status from dict')
 
-        if 'batteryStatus' in fromDict:
-            if 'cruisingRangeElectric_km' in fromDict['batteryStatus']:
-                cruisingRangeElectric_km = int(fromDict['batteryStatus']['cruisingRangeElectric_km']/1000)
-
+        if 'value' in fromDict:
+            if 'cruisingRangeElectric_km' in fromDict['value']:
+                cruisingRangeElectric_km = int(fromDict['value']['cruisingRangeElectric_km'])
                 if self.fixAPI and cruisingRangeElectric_km == 0x3FFF:
                     cruisingRangeElectric_km = None
                     LOG.info('%s: Attribute cruisingRangeElectric_km was error value 0x3FFF. Setting error state instead'
@@ -36,7 +37,7 @@ class BatteryStatus(GenericStatus):
 
                 if (self.fixAPI
                     and round((self.cruisingRangeElectric_km.value or 0) * 0.621371) == cruisingRangeElectric_km and cruisingRangeElectric_km != 0
-                        and self.currentSOC_pct.value == int(fromDict['batteryStatus']['currentSOC_pct'])):
+                        and self.currentSOC_pct.value == int(fromDict['value']['currentSOC_pct'])):
                     LOG.info('%s: Attribute cruisingRangeElectric_km was miscalculated (miles/km) this is a bug in the API and the new value will not be used',
                              self.getGlobalAddress())
                 else:
@@ -45,22 +46,24 @@ class BatteryStatus(GenericStatus):
             else:
                 self.cruisingRangeElectric_km.enabled = False
 
-            self.currentSOC_pct.fromDict(fromDict['batteryStatus'], 'currentSOC_pct')
-            self.currentSOC_pct.enabled= True
-            self.cruisingRangeElectric_km.enabled = True
+            self.currentSOC_pct.fromDict(fromDict['value'], 'currentSOC_pct')
+            self.navigationTargetSOC_pct.fromDict(fromDict['value'], 'navigationTargetSOC_pct')
         else:
             self.currentSOC_pct.enabled = False
             self.cruisingRangeElectric_km.enabled = False
+            self.navigationTargetSOC_pct.enabled = False
 
         super().update(fromDict=fromDict, ignoreAttributes=(
-            ignoreAttributes + ['currentSOC_pct', 'cruisingRangeElectric_km']))
+            ignoreAttributes + ['currentSOC_pct', 'navigationTargetSOC_pct', 'cruisingRangeElectric_km']))
 
     def __str__(self):
         string = super().__str__()
         if self.currentSOC_pct.enabled:
             string += f'\n\tCurrent SoC: {self.currentSOC_pct.value}%'
+        if self.navigationTargetSOC_pct.enabled:
+            string += f'\n\tNavigation Target SoC: {self.navigationTargetSOC_pct.value}%'
         if self.cruisingRangeElectric_km.enabled:
-            if self.cruisingRangeElectric_km is not None:
+            if self.cruisingRangeElectric_km.value is not None:
                 string += f'\n\tRange: {self.cruisingRangeElectric_km.value}km'
             else:
                 string += '\n\tRange: currently unknown'

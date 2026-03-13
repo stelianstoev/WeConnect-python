@@ -20,7 +20,7 @@ class GenericCapability(AddressableObject):
         self.id = AddressableAttribute(localAddress='id', parent=self, value=None, valueType=str)
         self.status = AddressableAttribute(localAddress='status', parent=self, value=None, valueType=list)
         self.expirationDate = AddressableAttribute(
-            localAddress='serviceExpiration', parent=self, value=None, valueType=datetime)
+            localAddress='expirationDate', parent=self, value=None, valueType=datetime)
         self.userDisablingAllowed = AddressableAttribute(
             localAddress='userDisablingAllowed', parent=self, value=None, valueType=bool)
         LOG.debug('Create capability from dict')
@@ -39,16 +39,16 @@ class GenericCapability(AddressableObject):
                     statuses.append(GenericCapability.Status(status))
                 except ValueError:
                     statuses.append(GenericCapability.Status(GenericCapability.Status.UNKNOWN))
-                    LOG.warning('An unsupported status: %s was provided, please report this as a bug', status)
+                    LOG.debug('An unsupported status: %s was provided, please report this as a bug', status)
             self.status.setValueWithCarTime(statuses, lastUpdateFromCar=None, fromServer=True)
         else:
             self.status.enabled = False
 
-        self.expirationDate.fromDict(fromDict, 'serviceExpiration')
+        self.expirationDate.fromDict(fromDict, 'expirationDate')
         self.userDisablingAllowed.fromDict(fromDict, 'userDisablingAllowed')
 
         for key, value in {key: value for key, value in fromDict.items()
-                           if key not in ['id', 'statuses', 'serviceExpiration', 'userDisablingAllowed']}.items():
+                           if key not in ['id', 'status', 'expirationDate', 'userDisablingAllowed']}.items():
             LOG.warning('%s: Unknown attribute %s with value %s', self.getGlobalAddress(), key, value)
 
     def __str__(self):
@@ -81,4 +81,5 @@ class GenericCapability(AddressableObject):
         INSUFFICIENT_RIGHTS = 3003
         CONSENT_MISSING = 3004
         LIMITED_FEATURE = 3005
+        AUTH_APP_CERT_ERROR = 3006
         STATUS_UNSUPPORTED = 4001

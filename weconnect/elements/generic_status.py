@@ -48,7 +48,7 @@ class GenericStatus(AddressableObject):
         LOG.debug('Update status from dict')
 
         if 'value' in fromDict:
-            if 'carCapturedTimestamp' in fromDict['value'] and fromDict['value']['carCapturedTimestamp'] is not None:
+            if 'carCapturedTimestamp' in fromDict['value']:
                 carCapturedTimestamp: Optional[datetime] = robustTimeParse(fromDict['value']['carCapturedTimestamp'])
                 if self.fixAPI and carCapturedTimestamp is not None:
                     # Looks like for some cars the calculation of the carCapturedTimestamp does not account for the timezone
@@ -116,7 +116,7 @@ class GenericStatus(AddressableObject):
 
         for key, value in {key: value for key, value in fromDict.items()
                            if key not in (['value', 'error', 'requests'] + ['carCapturedTimestamp'] + ignoreAttributes)}.items():
-            LOG.debug('%s: Unknown element %s with value %s', self.getGlobalAddress(), key, value)
+            LOG.warning('%s: Unknown element %s with value %s', self.getGlobalAddress(), key, value)
 
     def __str__(self) -> str:
         returnString: str = f'[{self.id}]'
@@ -187,4 +187,5 @@ class GenericStatus(AddressableObject):
             FAIL_CHARGE_PLUG_NOT_CONNECTED = 'fail_charge_plug_not_connected'
             FAIL_PLUG_DISCONNECTED = 'fail_plug_disconnected'
             FAIL_NO_EXTERNAL_POWER = 'fail_no_external_power'
+            FAIL_EXTERNAL_POWER_SUPPLY = 'fail_external_power_supply'
             UNKNOWN = 'unknown status'

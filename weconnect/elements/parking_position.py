@@ -3,8 +3,6 @@ import logging
 from weconnect.addressable import AddressableAttribute
 from weconnect.elements.generic_status import GenericStatus
 
-from myskoda.models.position import PositionType
-
 LOG = logging.getLogger("weconnect")
 
 
@@ -25,16 +23,14 @@ class ParkingPosition(GenericStatus):
         ignoreAttributes = ignoreAttributes or []
         LOG.debug('Update ParkingPosition from dict')
 
-        pos = next(pos for pos in fromDict['positions'] if pos['type'] == PositionType.VEHICLE)
+        # rename dict key to match new structure
+        if 'data' in fromDict:
+            fromDict['value'] = fromDict['data']
+            del fromDict['data']
 
-        if 'latitude' in pos['gps_coordinates']:
-            
-            self.latitude.fromDict(pos['gps_coordinates'], 'latitude')
-            self.longitude.fromDict(pos['gps_coordinates'], 'longitude')
-            fromDict.update({'value':{'carCapturedTimestamp': fromDict['timestamp']}})
-            self.latitude.enabled = True
-            self.longitude.enabled = True
-            self.enabled = True
+        if 'value' in fromDict:
+            self.latitude.fromDict(fromDict['value'], 'lat')
+            self.longitude.fromDict(fromDict['value'], 'lon')
         else:
             self.latitude.enabled = False
             self.longitude.enabled = False

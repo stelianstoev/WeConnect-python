@@ -1,14 +1,10 @@
-from enum import Enum
-
 import hashlib
-
 import json
 import logging
 
 from requests import Session
 
 from weconnect.auth.my_skoda_session import MySkodaSession
-from weconnect.auth.we_connect_session import WeConnectSession
 
 LOG = logging.getLogger("weconnect")
 
@@ -22,14 +18,12 @@ class SessionUser():
         return f'{self.username}:{self.password}'
 
 
-class Service(Enum):
-    WE_CONNECT = 'WeConnect'
-    WE_CHARGE = 'WeCharge'
-    MY_CUPRA = 'MyCupra'
+class Service():
+    """Skoda service only."""
     MY_SKODA = 'MySkoda'
 
     def __str__(self) -> str:
-        return self.value
+        return self.MY_SKODA
 
 
 class SessionManager():
@@ -48,16 +42,15 @@ class SessionManager():
             self.tokenstore = {}
         self.sessions = {}
 
-    def generateHash(service: Service, sessionuser: SessionUser) -> str:
-        hashstr = service.value + str(sessionuser)
+    def generateHash(self, service: str, sessionuser: SessionUser) -> str:
+        hashstr = service + str(sessionuser)
         return hashlib.sha512(hashstr.encode()).hexdigest()
 
-    def getSession(self, service: Service, sessionuser: SessionUser) -> Session:
-        session = None
+    def getSession(self, service: str, sessionuser: SessionUser) -> Session:
         if (service, sessionuser) in self.sessions:
             return self.sessions[(service, sessionuser)]
 
-        hash: str = SessionManager.generateHash(service, sessionuser)
+        hash = self.generateHash(service, sessionuser)
         token = None
         metadata = {}
         if hash in self.tokenstore:
@@ -67,17 +60,19 @@ class SessionManager():
             if 'metadata' in self.tokenstore[hash]:
                 metadata = self.tokenstore[hash]['metadata']
 
-        if service == Service.WE_CONNECT:
-            session = WeConnectSession(sessionuser=sessionuser, token=token, metadata=metadata)
-        elif service == Service.MY_SKODA:
-            session = MySkodaSession(session_user=sessionuser, token=token, metadata=metadata, cache={})
+        if service == Service.MY_SKODA:
+            session = MySkodaSession(sessionuser=sessionuser, token=token, metadata=metadata)
+        else:
+            # Default to Skoda for any service
+            session = MySkodaSession(sessionuser=sessionuser, token=token, metadata=metadata)
+        
         self.sessions[(service, sessionuser)] = session
         return session
 
     def saveTokenstore(self, filename: str):
         refreshedTokenstore = {}
         for sessionkey, session in self.sessions.items():
-            hash = SessionManager.generateHash(sessionkey[0], sessionkey[1])
+            hash = self.generateHash(sessionkey[0], sessionkey[1])
             refreshedTokenstore[hash] = {}
             refreshedTokenstore[hash]['token'] = session.token
             refreshedTokenstore[hash]['metadata'] = session.metadata
@@ -87,5 +82,5 @@ class SessionManager():
                 with open(filename, 'w', encoding='utf8') as file:
                     json.dump(self.tokenstore, file)
                 LOG.info('Writing tokenstore to file %s', filename)
-            except ValueError as err:  # pragma: no cover
+            except ValueError as err:
                 LOG.info('Could not write tokenstore to file %s (%s)', filename, err)

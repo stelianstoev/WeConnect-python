@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 import json
 

@@ -429,11 +429,20 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         with self.lock:
             url: str = self.weConnect.get_vehicle_images_url(self.vin.value)
             data = self.weConnect.fetchData(url, allowHttpError=True)
-            if data is not None and 'data' in data:  # pylint: disable=too-many-nested-blocks
-                for image in data['data']:
+            # Skoda API uses 'compositeRenders' instead of 'data'
+            if data is not None and 'compositeRenders' in data:
+                for image in data['compositeRenders']:
+                    if 'layers' not in image or image['layers'] is None or len(image['layers']) == 0:
+                        continue
+                    imageurl = None
+                    for layer in image['layers']:
+                        if 'url' in layer and layer['url'] is not None:
+                            imageurl = layer['url']
+                            break
+                    if imageurl is None:
+                        continue
                     img = None
                     cacheDate = None
-                    imageurl: str = image['url']
                     if self.weConnect.maxAgePictures is not None and self.weConnect.cache is not None and imageurl in self.weConnect.cache:
                         img, cacheDateString = self.weConnect.cache[imageurl]
                         img = base64.b64decode(img)
@@ -442,8 +451,17 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                     if img is None or self.weConnect.maxAgePictures is None \
                             or (cacheDate is not None and cacheDate < (datetime.utcnow() - timedelta(seconds=self.weConnect.maxAgePictures))):
                         try:
-                            imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
+                            # First try without authentication (like CarConnectivity does)
+                            import requests as req
+                            imageDownloadResponse = req.get(imageurl, stream=True)
                             self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
+                            
+                            # If unauthorized, try with authenticated session
+                            if imageDownloadResponse.status_code in [codes['unauthorized'], codes['forbidden']]:
+                                LOG.info('Image download returned %d, retrying with authenticated session', imageDownloadResponse.status_code)
+                                imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
+                                self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
+                            
                             if imageDownloadResponse.status_code == codes['ok']:
                                 img = Image.open(imageDownloadResponse.raw)
                                 if self.weConnect.cache is not None:
@@ -451,28 +469,8 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                                     img.save(buffered, format="PNG")
                                     imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
                                     self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
-                            elif imageDownloadResponse.status_code == codes['unauthorized']:
-                                LOG.info('Server asks for new authorization')
-                                self.weConnect.login()
-                                imageDownloadResponse = self.weConnect.session.get(imageurl, stream=True)
-                                self.weConnect.recordElapsed(imageDownloadResponse.elapsed)
-                                if imageDownloadResponse.status_code == codes['ok']:
-                                    img = Image.open(imageDownloadResponse.raw)
-                                    if self.weConnect.cache is not None:
-                                        buffered = io.BytesIO()
-                                        img.save(buffered, format="PNG")
-                                        imgStr = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                        self.weConnect.cache[imageurl] = (imgStr, str(datetime.utcnow()))
-                                else:
-                                    self.weConnect.notifyError(self, ErrorEventType.HTTP, str(imageDownloadResponse.status_code),
-                                                               'Could not fetch vehicle image due to server error')
-                                    raise RetrievalError('Could not retrieve vehicle image even after re-authorization.'
-                                                         f' Status Code was: {imageDownloadResponse.status_code}')
-                                self.weConnect.notifyError(self, ErrorEventType.HTTP, str(imageDownloadResponse.status_code),
-                                                           'Could not fetch vehicle image due to server error')
-                                raise RetrievalError(f'Could not retrieve vehicle image. Status Code was: {imageDownloadResponse.status_code}')
                             else:
-                                LOG.warning('Failed downloading picture %s with status code %d will try again in next update', image['id'],
+                                LOG.warning('Failed downloading picture %s with status code %d will try again in next update', view_type,
                                             imageDownloadResponse.status_code)
                         except exceptions.ConnectionError as connectionError:
                             self.weConnect.notifyError(self, ErrorEventType.CONNECTION, 'connection',
@@ -489,12 +487,14 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                             raise RetrievalError from retryError
 
                     if img is not None:
-                        self.__carImages[image['id']] = img
-                        if image['id'] == 'car_34view':
+                        view_type = image.get('viewType', 'unknown')
+                        self.__carImages[view_type] = img
+                        # Map Skoda view types to WeConnect picture types
+                        if view_type == 'UNMODIFIED_EXTERIOR_FRONT':
                             if 'car' in self.pictures:
-                                self.pictures['car'].setValueWithCarTime(self.__carImages['car_34view'], lastUpdateFromCar=None, fromServer=True)
+                                self.pictures['car'].setValueWithCarTime(self.__carImages[view_type], lastUpdateFromCar=None, fromServer=True)
                             else:
-                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages['car_34view'],
+                                self.pictures['car'] = AddressableAttribute(localAddress='car', parent=self.pictures, value=self.__carImages[view_type],
                                                                             valueType=Image.Image)
 
                 self.updateStatusPicture()

@@ -370,8 +370,11 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
                     LOG.warning('%s: Unknown domain %s with value %s', self.getGlobalAddress(), key, value)
 
             if (selective is None or any(x in selective for x in [Domain.ALL, Domain.ALL_CAPABLE, Domain.PARKING])) \
-                    and (not updateCapabilities or ('parkingPosition' in self.capabilities and self.capabilities['parkingPosition'].status.value is None)):
-                url = 'https://emea.bff.cariad.digital/vehicle/v1/vehicles/' + self.vin.value + '/parkingposition'
+                    and (not updateCapabilities or ('parkingPosition' not in self.capabilities
+                    or not hasattr(self.capabilities['parkingPosition'], 'status')
+                    or self.capabilities['parkingPosition'].status.value is None
+                    or len(self.capabilities['parkingPosition'].status.value) == 0)):
+                url = self.weConnect.get_parking_position_url(self.vin.value)
                 data = self.weConnect.fetchData(url, force, allowEmpty=True, allowHttpError=True, allowedErrors=[codes['not_found'],
                                                                                                                  codes['no_content'],
                                                                                                                  codes['bad_gateway'],
@@ -424,7 +427,7 @@ class Vehicle(AddressableObject):  # pylint: disable=too-many-instance-attribute
         if not SUPPORT_IMAGES:
             return
         with self.lock:
-            url: str = f'https://emea.bff.cariad.digital/media/v2/vehicle-images/{self.vin.value}?resolution=2x'
+            url: str = self.weConnect.get_vehicle_images_url(self.vin.value)
             data = self.weConnect.fetchData(url, allowHttpError=True)
             if data is not None and 'data' in data:  # pylint: disable=too-many-nested-blocks
                 for image in data['data']:

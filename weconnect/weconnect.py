@@ -197,8 +197,12 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
         return APIEndpoints.get_full_url('vehicle', 'vehicle_status', vin=vin)
 
     def get_parking_position_url(self, vin: str) -> str:
-        """Get the parking position API URL."""
-        return APIEndpoints.get_full_url('vehicle', 'parking_position', vin=vin)
+        """Get the parking position API URL (Cariad)."""
+        return APIEndpoints.get_cariad_url('parking_position', vin=vin)
+
+    def get_vehicle_images_url(self, vin: str) -> str:
+        """Get the vehicle images API URL (Skoda API)."""
+        return APIEndpoints.get_skoda_url('images', vin=vin)
 
     def get_charging_stations_url(self) -> str:
         """Get the charging stations API URL."""

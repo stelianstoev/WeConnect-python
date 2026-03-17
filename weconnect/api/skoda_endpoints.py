@@ -17,6 +17,9 @@ class APIEndpoints:
     # Base URL for Skoda
     BASE_URL = 'https://mysmob.api.connect.skoda-auto.cz'
     
+    # VW/Cariad API base URL (for parking position and images)
+    CARIAD_BASE_URL = 'https://emea.bff.cariad.digital'
+    
     # Identity URLs (OAuth)
     IDENTITY_URLS = {
         'authorize': 'https://identity.vwgroup.io/oidc/v1/authorize',
@@ -35,6 +38,19 @@ class APIEndpoints:
         'trips': '/api/v1/trips/{vin}',
         'images': '/api/v1/vehicle-information/{vin}/renders',
         'vehicle_details': '/api/v2/garage/vehicles/{vin}',
+    }
+    
+    # VW/Cariad endpoints (for parking position and images)
+    CARIAD_URLS = {
+        'parking_position': '/vehicle/v1/vehicles/{vin}/parkingposition',
+        'vehicle_status': '/vehicle/v1/vehicles/{vin}/selectivestatus',
+        'images': '/media/v2/vehicle-images/{vin}',
+    }
+    
+    # Skoda-specific endpoints
+    SKODA_URLS = {
+        'images': '/api/v1/vehicle-information/{vin}/renders',
+        'parking_position': '/api/v1/maps/positions?vin={vin}',
     }
     
     # Charging endpoints
@@ -80,6 +96,11 @@ class APIEndpoints:
         return cls.BASE_URL
     
     @classmethod
+    def get_cariad_base_url(cls) -> str:
+        """Get the Cariad API base URL."""
+        return cls.CARIAD_BASE_URL
+    
+    @classmethod
     def get_full_url(cls, endpoint_type: str, endpoint_key: str, **kwargs) -> str:
         """Get a full URL for an endpoint.
         
@@ -100,6 +121,8 @@ class APIEndpoints:
             endpoint_map = cls.AIR_CONDITIONING_URLS
         elif endpoint_type == 'other':
             endpoint_map = cls.OTHER_URLS
+        elif endpoint_type == 'cariad':
+            endpoint_map = cls.CARIAD_URLS
         else:
             endpoint_map = cls.VEHICLE_URLS
         
@@ -107,6 +130,26 @@ class APIEndpoints:
         endpoint_path = endpoint_map.get(endpoint_key, '')
         
         # Substitute variables in the URL
+        if kwargs:
+            endpoint_path = endpoint_path.format(**kwargs)
+        
+        return cls.BASE_URL + endpoint_path
+    
+    @classmethod
+    def get_cariad_url(cls, endpoint_key: str, **kwargs) -> str:
+        """Get a full URL for a Cariad endpoint."""
+        endpoint_path = cls.CARIAD_URLS.get(endpoint_key, '')
+        
+        if kwargs:
+            endpoint_path = endpoint_path.format(**kwargs)
+        
+        return cls.CARIAD_BASE_URL + endpoint_path
+    
+    @classmethod
+    def get_skoda_url(cls, endpoint_key: str, **kwargs) -> str:
+        """Get a full URL for a Skoda-specific endpoint."""
+        endpoint_path = cls.SKODA_URLS.get(endpoint_key, '')
+        
         if kwargs:
             endpoint_path = endpoint_path.format(**kwargs)
         

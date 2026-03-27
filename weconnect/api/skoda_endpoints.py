@@ -87,8 +87,12 @@ class APIEndpoints:
         'users': '/api/v1/users',
     }
     
-    # Charging stations
-    CHARGING_STATION_URL = '/api/v1/charging-stations'
+    # Charging stations (Skoda API - uses POST)
+    CHARGING_STATION_URL = '/api/v3/maps/nearby-places'
+    CHARGING_STATION_PARAMS = {
+        'placeTypes': ['CHARGING_STATION'],
+        'requirements': {}
+    }
     
     @classmethod
     def get_base_url(cls) -> str:

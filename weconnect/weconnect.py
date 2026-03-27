@@ -22,6 +22,7 @@ from weconnect.weconnect_errors import ErrorEventType
 from weconnect.util import ExtendedEncoder
 from weconnect.api.skoda_endpoints import Brand, APIEndpoints
 from weconnect.api.skoda_mapper import map_skoda_vehicle
+from weconnect.auth.openid_session import AccessType
 
 LOG = logging.getLogger("weconnect")
 
@@ -273,28 +274,106 @@ class WeConnect(AddressableObject):  # pylint: disable=too-many-instance-attribu
                             force=False) -> AddressableDict[str, ChargingStation]:
         chargingStationMap: AddressableDict[str, ChargingStation] = AddressableDict(localAddress='', parent=None)
         base_url = self.get_charging_stations_url()
-        url: str = f'{base_url}?latitude={latitude}&longitude={longitude}'
-        if market is not None:
-            url += f'&market={market}'
-        if useLocale is not None:
-            url += f'&locale={useLocale}'
-        if searchRadius is not None:
-            url += f'&searchRadius={searchRadius}'
-        if self.session.userId is not None:
-            url += f'&userId={self.session.userId}'
-        data = self.fetchData(url, force)
-        if data is not None:
-            if 'chargingStations' in data and data['chargingStations']:
-                for stationDict in data['chargingStations']:
-                    if 'id' not in stationDict:
-                        break
-                    stationId: str = stationDict['id']
-                    station: ChargingStation = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=stationDict,
-                                                               fixAPI=self.fixAPI)
-                    chargingStationMap[stationId] = station
-
-                self.__cache[url] = (data, str(datetime.utcnow()))
+        
+        # Skoda uses POST with JSON body
+        radius = searchRadius if searchRadius is not None else 1000
+        post_data = {
+            'placeTypes': ['CHARGING_STATION'],
+            'location': {'latitude': latitude, 'longitude': longitude},
+            'radiusInMeters': radius,
+            'requirements': {}
+        }
+        
+        try:
+            response = self.session.post(base_url, json=post_data, allow_redirects=False, access_type=AccessType.ACCESS)
+            self.recordElapsed(response.elapsed)
+            
+            if response.status_code == requests.codes['ok']:
+                data = response.json()
+                if data is not None and 'nearbyPlaces' in data:
+                    for place in data['nearbyPlaces']:
+                        if 'id' not in place or 'location' not in place:
+                            continue
+                        
+                        # Calculate distance
+                        lat_diff = place['location']['latitude'] - latitude
+                        lon_diff = place['location']['longitude'] - longitude
+                        distance = ((lat_diff**2 + lon_diff**2)**0.5) * 111000  # Approximate meters
+                        place['distance'] = distance
+                        
+                        # Convert to charging station format
+                        station_dict = self._convert_skoda_place_to_station(place)
+                        stationId = place['id']
+                        station = ChargingStation(weConnect=self, stationId=stationId, parent=chargingStationMap, fromDict=station_dict,
+                                                fixAPI=self.fixAPI)
+                        chargingStationMap[stationId] = station
+                        
+                    # Sort by distance
+                    sorted_stations = sorted(chargingStationMap.values(), key=lambda s: s.distance.value if s.distance.enabled else float('inf'))
+                    # Rebuild dict in sorted order
+                    chargingStationMap = AddressableDict(localAddress='', parent=None)
+                    for station in sorted_stations:
+                        chargingStationMap[station.id.value] = station
+                        
+                    self.__cache[base_url] = (data, str(datetime.utcnow()))
+        except requests.exceptions.ConnectionError as connectionError:
+            LOG.warning('Could not fetch charging stations: %s', connectionError)
+        except requests.exceptions.ChunkedEncodingError as chunkedEncodingError:
+            LOG.warning('Could not fetch charging stations: %s', chunkedEncodingError)
+        except requests.exceptions.ReadTimeout as timeoutError:
+            LOG.warning('Could not fetch charging stations: %s', timeoutError)
+            
         return chargingStationMap
+    
+    def _convert_skoda_place_to_station(self, place: Dict) -> Dict:
+        """Convert Skoda place data to charging station format."""
+        station = {
+            'id': place.get('id', ''),
+            'name': place.get('name', ''),
+            'latitude': place.get('location', {}).get('latitude', 0),
+            'longitude': place.get('location', {}).get('longitude', 0),
+            'distance': place.get('distance', 0),
+        }
+        
+        if 'address' in place:
+            addr = place['address']
+            formatted_address = []
+            if addr.get('street'):
+                formatted_address.append(addr['street'])
+                if addr.get('houseNumber'):
+                    formatted_address[-1] += ' ' + addr['houseNumber']
+            if addr.get('zipCode'):
+                formatted_address.append(addr['zipCode'])
+            if addr.get('city'):
+                formatted_address.append(addr['city'])
+            if addr.get('country'):
+                formatted_address.append(addr['country'])
+            station['address'] = {
+                'formattedAddress': ', '.join(formatted_address),
+                'street': addr.get('street', ''),
+                'houseNumber': addr.get('houseNumber', ''),
+                'city': addr.get('city', ''),
+                'postalCode': addr.get('zipCode', ''),
+                'country': addr.get('country', '')
+            }
+        
+        if 'chargingStation' in place:
+            cs = place['chargingStation']
+            station['chargingPower'] = cs.get('maxElectricPowerInKw', 0)
+            
+            # Convert to charging spots format
+            total_spots = cs.get('totalCountChargingPoints', 0)
+            available_spots = cs.get('availableCountChargingPoints', 0)
+            charging_spots = []
+            for i in range(total_spots):
+                spot = {
+                    'maxChargePower': cs.get('maxElectricPowerInKw', 0),
+                    'status': 'AVAILABLE' if i < available_spots else 'OCCUPIED'
+                }
+                charging_spots.append(spot)
+            station['chargingSpots'] = charging_spots
+        
+        return station
 
     def updateChargingStations(self, force: bool = False) -> None:  # noqa: C901 # pylint: disable=too-many-branches
         if self.latitude is not None and self.longitude is not None:

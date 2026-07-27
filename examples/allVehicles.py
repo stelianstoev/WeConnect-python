@@ -13,7 +13,7 @@ def main():
 
     
     print('#  Initialize WeConnect')
-    weConnect = weconnect.WeConnect(username="artherdent@gmail.com", password="DdpmM9ON^*q&Ad%7", updateAfterLogin=False, loginOnInit=False)
+    weConnect = weconnect.WeConnect(username="username", password="password", updateAfterLogin=False, loginOnInit=False)
     print('#  Login')
     weConnect.login()
     print('#  update')
